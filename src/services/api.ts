@@ -1,4 +1,4 @@
-import { Resident, SystemUser, AssociationData } from '../types';
+import { Resident, SystemUser, AssociationData } from '@/types';
 
 // Detect API URL: Development (localhost:3001) vs Production (Relative /api)
 // Note: In some preview environments, localhost:3001 might not be directly accessible, triggering the fallback.
@@ -59,6 +59,25 @@ async function fetchWithFallback<T>(
 }
 
 export const api = {
+    // --- System Health ---
+    async checkBackendConnection(): Promise<boolean> {
+        try {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 1000);
+            
+            // Tenta acessar a rota de health check (precisa ser definida no server.js)
+            // Se falhar, tenta listar roles como proxy de saúde
+            const res = await fetch(`${window.location.hostname === 'localhost' ? 'http://localhost:3001' : ''}/health`, { 
+                method: 'GET',
+                signal: controller.signal 
+            });
+            clearTimeout(timeoutId);
+            return res.ok;
+        } catch (e) {
+            return false;
+        }
+    },
+    
     // --- Residents ---
     async getResidents(): Promise<Resident[]> {
         return fetchWithFallback('/residents', undefined, () => {
