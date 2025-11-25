@@ -1,0 +1,8 @@
+{
+  "name": "S.I.E. - Cacaria ID System",
+  "description": "Sistema de Investigação Estratégica: Módulo Associação de Moradores de Cacaria. Geração de carteirinhas com IA.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}
