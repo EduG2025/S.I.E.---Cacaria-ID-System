@@ -1,7 +1,8 @@
 
-import { Resident, SystemUser, AssociationData } from '../types';
+import { Resident, SystemUser, AssociationData } from '@/types';
 
 // Detect API URL: Development (localhost:3001) vs Production (Relative /api)
+// Note: In some preview environments, localhost:3001 might not be directly accessible, triggering the fallback.
 const API_URL = window.location.hostname === 'localhost' 
     ? 'http://localhost:3001/api' 
     : '/api';
@@ -23,6 +24,8 @@ const localDB = {
 
 /**
  * Hybrid Fetch Function
+ * Tries to fetch from the Node.js Backend. 
+ * If it fails (Network Error, 404, or non-JSON response), it executes the fallbackFn (LocalStorage).
  */
 async function fetchWithFallback<T>(
     endpoint: string, 
@@ -30,6 +33,7 @@ async function fetchWithFallback<T>(
     fallbackFn: () => Promise<T> | T
 ): Promise<T> {
     try {
+        // Create a timeout signal to fail fast if backend is not running
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 1500); // 1.5s timeout
 
@@ -41,12 +45,16 @@ async function fetchWithFallback<T>(
 
         const contentType = res.headers.get("content-type");
         
+        // If success and is JSON
         if (res.ok && contentType && contentType.includes("application/json")) {
             return await res.json();
         } else {
-            throw new Error(`Backend unavailable`);
+            // Force error to trigger fallback
+            throw new Error(`Backend unavailable or invalid response for ${endpoint}`);
         }
     } catch (err) {
+        // Silently fail over to LocalStorage so the user doesn't see an error
+        // console.warn(`API ${endpoint} failed, using LocalStorage fallback.`);
         return await fallbackFn();
     }
 }
@@ -70,7 +78,7 @@ export const api = {
             return false;
         }
     },
-
+    
     // --- Residents ---
     async getResidents(): Promise<Resident[]> {
         return fetchWithFallback('/residents', undefined, () => {
@@ -110,6 +118,7 @@ export const api = {
             if (username === 'admin' && password === 'admin') {
                 return { id: '1', name: 'Administrador', username: 'admin', role: 'ADMIN' } as SystemUser;
             }
+            // Check local users
             const users = localDB.get(STORAGE_KEYS.USERS) as SystemUser[];
             const found = users.find(u => u.username === username && u.password === password);
             return found || null;
@@ -119,6 +128,7 @@ export const api = {
     async getUsers(): Promise<SystemUser[]> {
         return fetchWithFallback('/users', undefined, () => {
             const users = localDB.get(STORAGE_KEYS.USERS) as SystemUser[];
+            // Ensure at least one admin exists in local storage
             if (users.length === 0) {
                  return [{ id: '1', name: 'Administrador', username: 'admin', role: 'ADMIN' }];
             }

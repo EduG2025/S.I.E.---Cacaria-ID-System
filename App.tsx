@@ -1,9 +1,8 @@
-
 import React, { useState, useRef, useEffect } from 'react';
 import { Camera, Sparkles, Upload, FileText, Download, ShieldCheck, User as UserIcon, ZoomIn, Move, Settings, Lock, LayoutTemplate, Image as ImageIcon, FileImage, AlertTriangle, CheckCircle, BarChart3, Users, Search, Edit, Trash2, Plus, Info, Save, X, Building, Phone, Calendar, Paperclip, File, Wifi, WifiOff } from 'lucide-react';
 import { Resident, ProcessingStatus, AppView, IDTemplate, PhotoSettings, User, SystemUser, AssociationData, Director } from './types';
 import { analyzeDocumentText, editResidentPhoto, fetchCompanyData } from './services/geminiService';
-import { api } from './services/api'; // Fixed relative import
+import { api } from './services/api'; 
 import { IDCard } from './components/IDCard';
 import html2canvas from 'html2canvas';
 
@@ -177,6 +176,7 @@ const App: React.FC = () => {
 
   // --- AI Features State ---
   const [uploadedPhotoBase64, setUploadedPhotoBase64] = useState<string | null>(null);
+  const [uploadedPhotoMimeType, setUploadedPhotoMimeType] = useState<string>('image/jpeg');
   const [editPrompt, setEditPrompt] = useState<string>("Remover fundo original. Adicionar fundo branco sólido. Melhorar iluminação para estilo estúdio. Centralizar rosto e ombros sem cortar o topo da cabeça. Estilo foto 3x4 oficial.");
   
   const idCardRef = useRef<HTMLDivElement>(null);
@@ -266,6 +266,8 @@ const App: React.FC = () => {
       // If has photo, try to set up edit context (basic)
       if (r.photoUrl && r.photoUrl.startsWith('data:image')) {
            setUploadedPhotoBase64(r.photoUrl.split(',')[1]);
+           const mimeMatch = r.photoUrl.match(/data:(.*?);/);
+           if (mimeMatch) setUploadedPhotoMimeType(mimeMatch[1]);
       }
       setView(AppView.ID_GENERATOR);
   }
@@ -288,10 +290,11 @@ const App: React.FC = () => {
 
   const handleDocumentScan = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
+        const file = e.target.files[0];
         setStatus({ ...status, isAnalyzing: true, message: 'Analisando documento (Gemini 2.5 Flash)...' });
         try {
-            const base64 = await fileToBase64(e.target.files[0]);
-            const data = await analyzeDocumentText(base64);
+            const base64 = await fileToBase64(file);
+            const data = await analyzeDocumentText(base64, file.type);
             setResident(prev => ({
                 ...prev,
                 name: data.name || prev.name,
@@ -300,7 +303,8 @@ const App: React.FC = () => {
                 birthDate: data.birthDate || prev.birthDate
             }));
         } catch (error) {
-            alert('Falha ao analisar documento.');
+            console.error(error);
+            alert('Falha ao analisar documento. Verifique a chave de API e o formato da imagem.');
         } finally {
             setStatus({ ...status, isAnalyzing: false, message: '' });
         }
@@ -312,7 +316,8 @@ const App: React.FC = () => {
       const file = e.target.files[0];
       const base64 = await fileToBase64(file);
       setUploadedPhotoBase64(base64);
-      setResident(prev => ({ ...prev, photoUrl: `data:image/jpeg;base64,${base64}` }));
+      setUploadedPhotoMimeType(file.type);
+      setResident(prev => ({ ...prev, photoUrl: `data:${file.type};base64,${base64}` }));
       setPhotoSettings({ zoom: 1, x: 0, y: 0 });
     }
   };
@@ -321,11 +326,13 @@ const App: React.FC = () => {
     if (!uploadedPhotoBase64) return;
     setStatus({ ...status, isEditingPhoto: true, message: 'Processando foto oficial (Gemini Nano Banana)...' });
     try {
-      const newImage = await editResidentPhoto(uploadedPhotoBase64, editPrompt);
+      const newImage = await editResidentPhoto(uploadedPhotoBase64, editPrompt, uploadedPhotoMimeType);
       setResident(prev => ({ ...prev, photoUrl: newImage }));
       setUploadedPhotoBase64(newImage.split(',')[1]); 
+      setUploadedPhotoMimeType('image/png'); // Gemini usually returns PNG/JPEG, but let's assume valid base64
     } catch (err) {
-      alert("Erro na edição da imagem");
+      console.error(err);
+      alert("Erro na edição da imagem. Verifique a API Key.");
     } finally {
       setStatus({ ...status, isEditingPhoto: false, message: '' });
     }

@@ -4,7 +4,7 @@ const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 // --- 1. Fast Text Analysis (Flash) ---
 // Used to parse document text or autofill form data
-export const analyzeDocumentText = async (base64Image: string): Promise<any> => {
+export const analyzeDocumentText = async (base64Image: string, mimeType: string = 'image/jpeg'): Promise<any> => {
   try {
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash',
@@ -12,7 +12,7 @@ export const analyzeDocumentText = async (base64Image: string): Promise<any> => 
         parts: [
           {
             inlineData: {
-              mimeType: 'image/jpeg',
+              mimeType: mimeType,
               data: base64Image
             }
           },
@@ -43,7 +43,7 @@ export const analyzeDocumentText = async (base64Image: string): Promise<any> => 
 
 // --- 2. Image Editing (Nano Banana / Flash Image) ---
 // Used to remove background or apply filters to the resident's photo
-export const editResidentPhoto = async (base64Image: string, prompt: string): Promise<string> => {
+export const editResidentPhoto = async (base64Image: string, prompt: string, mimeType: string = 'image/jpeg'): Promise<string> => {
   try {
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash-image', // "Nano Banana" for editing
@@ -51,7 +51,7 @@ export const editResidentPhoto = async (base64Image: string, prompt: string): Pr
         parts: [
           {
             inlineData: {
-              mimeType: 'image/jpeg',
+              mimeType: mimeType,
               data: base64Image,
             },
           },
@@ -83,7 +83,7 @@ export const editResidentPhoto = async (base64Image: string, prompt: string): Pr
 export const generatePlaceholderAvatar = async (description: string, size: '1K' | '2K' | '4K', aspectRatio: string = '1:1'): Promise<string> => {
   try {
     const response = await ai.models.generateContent({
-      model: 'gemini-3-pro-image-preview', // High quality generation
+      model: 'gemini-3-pro-image-preview', // High quality generation maintained as requested
       contents: {
         parts: [{ text: description }]
       },
@@ -107,12 +107,12 @@ export const generatePlaceholderAvatar = async (description: string, size: '1K' 
   }
 };
 
-// --- 4. Deep Analysis (Pro Preview) ---
-// Used for security checks on documents
+// --- 4. Deep Analysis (Flash) ---
+// Used for security checks on documents - Standardized to Flash 2.5
 export const deepAnalyzeDocument = async (base64Image: string): Promise<string> => {
     try {
         const response = await ai.models.generateContent({
-            model: 'gemini-3-pro-preview',
+            model: 'gemini-2.5-flash',
             contents: {
                 parts: [
                     { inlineData: { mimeType: 'image/jpeg', data: base64Image } },
