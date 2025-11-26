@@ -680,9 +680,179 @@ const App: React.FC = () => {
   }
 
   const SystemSettingsView = () => {
-    // ... (SystemSettingsView implementation remains the same, omitted for brevity but assumed present)
-    // Placeholder to keep code valid within XML, assuming previous implementation exists
-    return <div className="p-8 text-white">Configurações do Sistema (Implementação Anterior)</div>;
+    const handleDirectorAdd = () => {
+        setAssociationData(prev => ({
+            ...prev,
+            management: {
+                ...prev.management,
+                directors: [...prev.management.directors, { id: crypto.randomUUID(), name: '', title: 'Diretor' }]
+            }
+        }));
+    };
+
+    const handleDirectorRemove = (id: string) => {
+        setAssociationData(prev => ({
+            ...prev,
+            management: {
+                ...prev.management,
+                directors: prev.management.directors.filter(d => d.id !== id)
+            }
+        }));
+    };
+
+    const handleDirectorChange = (id: string, field: 'name' | 'title', value: string) => {
+        setAssociationData(prev => ({
+            ...prev,
+            management: {
+                ...prev.management,
+                directors: prev.management.directors.map(d => d.id === id ? { ...d, [field]: value } : d)
+            }
+        }));
+    };
+
+    const inputClass = "w-full bg-brand-primary border border-gray-700 rounded-lg p-2.5 text-white text-sm focus:border-brand-accent outline-none";
+    const labelClass = "block text-xs uppercase text-gray-500 font-bold mb-1";
+
+    return (
+        <div className="p-8 max-w-[1200px] mx-auto">
+            <h2 className="text-2xl font-bold text-white flex items-center gap-2 mb-6"><Building className="text-brand-accent"/> Configurações da Associação</h2>
+            
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                <div className="space-y-6">
+                    {/* Basic Info */}
+                    <div className="bg-brand-secondary p-6 rounded-xl border border-gray-700 shadow-lg">
+                        <h3 className="text-white font-bold mb-4 flex items-center gap-2 uppercase text-sm"><FileText size={16}/> Dados Jurídicos</h3>
+                        <div className="space-y-4">
+                            <div>
+                                <label className={labelClass}>Nome da Associação (Fantasia)</label>
+                                <input value={associationData.name} onChange={e => setAssociationData({...associationData, name: e.target.value})} className={inputClass} />
+                            </div>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className={labelClass}>CNPJ</label>
+                                    <div className="relative">
+                                        <input value={associationData.cnpj} onChange={e => setAssociationData({...associationData, cnpj: e.target.value})} className={inputClass} />
+                                        <button onClick={handleCnpjLookup} disabled={status.isSearching} className="absolute right-1 top-1 bg-brand-accent/20 p-1.5 rounded hover:bg-brand-accent text-brand-accent hover:text-white transition">
+                                            {status.isSearching ? <div className="animate-spin w-4 h-4 border-2 border-current border-t-transparent rounded-full"/> : <Search size={16}/>}
+                                        </button>
+                                    </div>
+                                </div>
+                                <div>
+                                    <label className={labelClass}>Razão Social</label>
+                                    <input value={associationData.companyName} onChange={e => setAssociationData({...associationData, companyName: e.target.value})} className={inputClass} />
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Address */}
+                    <div className="bg-brand-secondary p-6 rounded-xl border border-gray-700 shadow-lg">
+                        <h3 className="text-white font-bold mb-4 flex items-center gap-2 uppercase text-sm"><Move size={16}/> Endereço & Contato</h3>
+                        <div className="space-y-4">
+                            <div className="grid grid-cols-3 gap-4">
+                                <div className="col-span-2">
+                                    <label className={labelClass}>Logradouro</label>
+                                    <input value={associationData.address.street} onChange={e => setAssociationData({...associationData, address: {...associationData.address, street: e.target.value}})} className={inputClass} />
+                                </div>
+                                <div>
+                                    <label className={labelClass}>Número</label>
+                                    <input value={associationData.address.number} onChange={e => setAssociationData({...associationData, address: {...associationData.address, number: e.target.value}})} className={inputClass} />
+                                </div>
+                            </div>
+                            <div className="grid grid-cols-3 gap-4">
+                                <div>
+                                    <label className={labelClass}>Cidade</label>
+                                    <input value={associationData.address.city} onChange={e => setAssociationData({...associationData, address: {...associationData.address, city: e.target.value}})} className={inputClass} />
+                                </div>
+                                <div>
+                                    <label className={labelClass}>Estado</label>
+                                    <input value={associationData.address.state} onChange={e => setAssociationData({...associationData, address: {...associationData.address, state: e.target.value}})} className={inputClass} />
+                                </div>
+                                <div>
+                                    <label className={labelClass}>CEP</label>
+                                    <input value={associationData.address.zip} onChange={e => setAssociationData({...associationData, address: {...associationData.address, zip: e.target.value}})} className={inputClass} />
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div className="space-y-6">
+                    {/* Management */}
+                    <div className="bg-brand-secondary p-6 rounded-xl border border-gray-700 shadow-lg">
+                        <h3 className="text-white font-bold mb-4 flex items-center gap-2 uppercase text-sm"><Users size={16}/> Gestão & Diretoria</h3>
+                        <div className="space-y-4">
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className={labelClass}>Presidente</label>
+                                    <input value={associationData.management.president} onChange={e => setAssociationData({...associationData, management: {...associationData.management, president: e.target.value}})} className={inputClass} />
+                                </div>
+                                <div>
+                                    <label className={labelClass}>Vice-Presidente</label>
+                                    <input value={associationData.management.vicePresident} onChange={e => setAssociationData({...associationData, management: {...associationData.management, vicePresident: e.target.value}})} className={inputClass} />
+                                </div>
+                            </div>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className={labelClass}>Início Mandato</label>
+                                    <input type="month" value={associationData.management.mandateStart} onChange={e => setAssociationData({...associationData, management: {...associationData.management, mandateStart: e.target.value}})} className={inputClass} />
+                                </div>
+                                <div>
+                                    <label className={labelClass}>Fim Mandato</label>
+                                    <input type="month" value={associationData.management.mandateEnd} onChange={e => setAssociationData({...associationData, management: {...associationData.management, mandateEnd: e.target.value}})} className={inputClass} />
+                                </div>
+                            </div>
+
+                            {/* Dynamic Directors */}
+                            <div className="border-t border-gray-700 pt-4">
+                                <label className={`${labelClass} flex justify-between`}>
+                                    Diretores Adicionais 
+                                    <button onClick={handleDirectorAdd} className="text-brand-accent hover:text-white text-[10px] flex items-center gap-1"><Plus size={12}/> Adicionar</button>
+                                </label>
+                                <div className="space-y-2 max-h-40 overflow-y-auto">
+                                    {associationData.management.directors.map(dir => (
+                                        <div key={dir.id} className="flex gap-2">
+                                            <input value={dir.title} onChange={e => handleDirectorChange(dir.id, 'title', e.target.value)} className={`${inputClass} !py-1 !text-xs w-1/3`} placeholder="Cargo" />
+                                            <input value={dir.name} onChange={e => handleDirectorChange(dir.id, 'name', e.target.value)} className={`${inputClass} !py-1 !text-xs flex-1`} placeholder="Nome" />
+                                            <button onClick={() => handleDirectorRemove(dir.id)} className="text-red-400 hover:text-white p-1"><Trash2 size={14}/></button>
+                                        </div>
+                                    ))}
+                                    {associationData.management.directors.length === 0 && <p className="text-gray-500 text-xs italic">Nenhum diretor adicional.</p>}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Logo & Actions */}
+                    <div className="bg-brand-secondary p-6 rounded-xl border border-gray-700 shadow-lg">
+                         <h3 className="text-white font-bold mb-4 flex items-center gap-2 uppercase text-sm"><ImageIcon size={16}/> Identidade Visual</h3>
+                         <div className="flex gap-6 items-center">
+                             <div className="w-24 h-24 bg-brand-primary rounded-lg border border-gray-600 flex items-center justify-center overflow-hidden">
+                                 {organizationLogo ? (
+                                     <img src={organizationLogo} alt="Logo" className="w-full h-full object-contain" />
+                                 ) : (
+                                     <ShieldCheck size={32} className="text-gray-600"/>
+                                 )}
+                             </div>
+                             <div className="flex-1">
+                                 <label className="bg-brand-primary hover:bg-brand-accent/20 border border-gray-600 hover:border-brand-accent text-white px-4 py-2 rounded-lg cursor-pointer flex items-center gap-2 w-fit transition mb-2">
+                                     <Upload size={16} /> Carregar Nova Logo
+                                     <input type="file" accept="image/*" className="hidden" onChange={handleLogoUpload} />
+                                 </label>
+                                 <p className="text-[10px] text-gray-500">Recomendado: PNG com fundo transparente. Esta logo será usada na tela de login e nas carteirinhas.</p>
+                             </div>
+                         </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div className="mt-8 flex justify-end">
+                <button onClick={handleAssociationSave} className="bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-8 rounded-lg shadow-lg flex items-center gap-2 transition">
+                    <Save size={20} /> Salvar Configurações
+                </button>
+            </div>
+        </div>
+    );
   }
 
   // --- Views Logic ---
