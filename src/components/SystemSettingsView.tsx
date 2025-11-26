@@ -2,7 +2,7 @@
 import React from 'react';
 import { Building, FileText, Search, Move, Users, Paperclip, Download, Trash2, Plus, ImageIcon, ShieldCheck, Upload, Save } from 'lucide-react';
 import { AssociationData, ProcessingStatus } from '@/types';
-import { ApiKeyManager } from './ApiKeyManager';
+// import { ApiKeyManager } from './ApiKeyManager'; // Deprecated
 import { Tooltip } from './Tooltip';
 
 interface SystemSettingsViewProps {
@@ -137,8 +137,7 @@ export const SystemSettingsView: React.FC<SystemSettingsViewProps> = ({
                         </div>
                     </div>
                     
-                    {/* API KEY MANAGEMENT */}
-                    <ApiKeyManager />
+                    {/* API KEY MANAGEMENT REMOVED */}
 
                 </div>
 

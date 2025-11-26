@@ -10,7 +10,6 @@ import { ResidentsListView } from '@/components/ResidentsListView';
 import { UsersListView } from '@/components/UsersListView';
 import { SystemSettingsView } from '@/components/SystemSettingsView';
 import { Tooltip } from '@/components/Tooltip';
-import { Layout } from '@/components/Layout';
 import html2canvas from 'html2canvas';
 
 // Utility to convert file to base64
@@ -39,6 +38,7 @@ const App: React.FC = () => {
 
   // --- App State ---
   const [view, setView] = useState<AppView>(AppView.LOGIN);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   
   const [status, setStatus] = useState<ProcessingStatus>({
     isAnalyzing: false,
@@ -91,10 +91,13 @@ const App: React.FC = () => {
 
     // 2. Check AI Capability
     const checkAi = async () => {
-        const key = await api.getActiveApiKey();
+        const key = process.env.API_KEY;
         if(key) {
             const valid = await validateApiKey(key);
             setIsAiReady(valid);
+        } else {
+            console.warn("API_KEY missing in environment.");
+            setIsAiReady(false);
         }
     };
     checkAi();
@@ -117,6 +120,9 @@ const App: React.FC = () => {
   useEffect(() => {
     if (!currentUser) return; // Only load data if logged in
     
+    // Close mobile menu on view change
+    setIsMobileMenuOpen(false);
+
     if (view === AppView.RESIDENTS_LIST || view === AppView.DASHBOARD) {
         loadResidents();
     }
@@ -225,7 +231,6 @@ const App: React.FC = () => {
   const streamRef = useRef<MediaStream | null>(null);
 
   const idCardRef = useRef<HTMLDivElement>(null);
-  const hiddenPrintRef = useRef<HTMLDivElement>(null);
 
   // --- Handlers ---
 
@@ -497,21 +502,11 @@ const App: React.FC = () => {
       }
   }
 
-  // --- Printing (Clean Image) ---
-  const getCleanImage = async () => {
-      if (!hiddenPrintRef.current) return null;
-      
-      return html2canvas(hiddenPrintRef.current, { 
-          scale: 3, 
-          backgroundColor: '#ffffff', 
-          useCORS: true,
-          logging: false
-      });
-  };
-
   const handlePrint = async () => {
+      if (!idCardRef.current) return;
+      
       try {
-          // Use the clean image generator from hidden ref
+          // Use the clean image generator
           const canvas = await getCleanImage();
           if(!canvas) return;
 
@@ -543,7 +538,54 @@ const App: React.FC = () => {
       }
   };
 
+  const getCleanImage = async () => {
+      if (!idCardRef.current) return null;
+      
+      return html2canvas(idCardRef.current, { 
+          scale: 3, 
+          backgroundColor: '#ffffff', 
+          useCORS: true,
+          logging: false,
+          onclone: (clonedDoc) => {
+              const inputs = clonedDoc.querySelectorAll('input');
+              inputs.forEach((input) => {
+                  const value = input.value;
+                  const span = clonedDoc.createElement('div');
+                  span.textContent = value;
+                  
+                  const style = window.getComputedStyle(input);
+                  span.style.font = style.font;
+                  span.style.fontFamily = style.fontFamily;
+                  span.style.fontSize = style.fontSize;
+                  span.style.fontWeight = style.fontWeight;
+                  span.style.letterSpacing = style.letterSpacing;
+                  span.style.textTransform = style.textTransform;
+                  span.style.color = style.color;
+                  span.style.textAlign = style.textAlign;
+                  span.style.backgroundColor = 'transparent';
+                  span.style.border = 'none';
+                  
+                  span.style.position = style.position;
+                  span.style.left = style.left;
+                  span.style.top = style.top;
+                  span.style.width = style.width;
+                  span.style.height = style.height;
+                  span.style.display = 'flex';
+                  span.style.alignItems = 'center';
+                  
+                  if (style.textAlign === 'right') span.style.justifyContent = 'flex-end';
+                  else if (style.textAlign === 'center') span.style.justifyContent = 'center';
+                  else span.style.justifyContent = 'flex-start';
+
+                  input.style.display = 'none';
+                  input.parentNode?.insertBefore(span, input);
+              });
+          }
+      });
+  };
+
   const handleDownloadJPG = async () => {
+      if (!idCardRef.current) return;
       try {
           const canvas = await getCleanImage();
           if(!canvas) return;
@@ -660,22 +702,136 @@ const App: React.FC = () => {
       )
   }
 
+  // --- ACCESS DENIED GUARD ---
+  if ((view === AppView.USERS_LIST || view === AppView.SYSTEM_SETTINGS || view === AppView.TEMPLATE_EDITOR) && currentUser?.role !== 'ADMIN') {
+      return (
+          <div className="min-h-screen bg-brand-primary flex flex-col items-center justify-center text-red-500 p-8 text-center">
+              <ShieldCheck size={64} className="mb-4 text-brand-accent opacity-50" />
+              <h1 className="text-2xl font-bold mb-2 text-white">Acesso Negado</h1>
+              <p className="text-gray-400 mb-6">Você não tem permissão para acessar este módulo administrativo.</p>
+              <button onClick={() => setView(AppView.DASHBOARD)} className="bg-brand-secondary hover:bg-brand-accent/20 px-6 py-2 rounded-lg text-white border border-gray-700">
+                  Voltar ao Dashboard
+              </button>
+          </div>
+      );
+  }
+
   return (
-    <Layout 
-        currentUser={currentUser} 
-        isBackendConnected={isBackendConnected} 
-        isAiReady={isAiReady} 
-        view={view} 
-        setView={setView} 
-        handleLogout={handleLogout}
-        title={view === AppView.ID_GENERATOR ? 'Central de Identificação - AMC' : view === AppView.RESIDENTS_LIST ? 'Banco de Dados: Moradores' : 'Sistema Integrado'}
-    >
-        {/* Hidden Card for Printing (Pure HTML, no inputs) */}
-        <div className="fixed top-0 left-0 -z-50 opacity-0 pointer-events-none">
-            <div ref={hiddenPrintRef}>
-                <IDCard resident={resident} template={template} customTemplateData={selectedCustomTemplate} photoSettings={photoSettings} organizationLogo={organizationLogo} associationData={associationData} isReadOnly={true} />
+    <div className="min-h-screen flex flex-col md:flex-row font-sans text-brand-light bg-brand-dark">
+      
+      {/* Mobile Header */}
+      <div className="md:hidden flex items-center justify-between p-4 bg-brand-secondary border-b border-brand-primary sticky top-0 z-50">
+          <div className="flex items-center gap-2">
+             <ShieldCheck className="text-brand-accent" size={20} />
+             <span className="font-bold text-white tracking-widest">S.I.E.</span>
+          </div>
+          <button onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)} className="text-white">
+             {isMobileMenuOpen ? <X /> : <Menu />}
+          </button>
+      </div>
+
+      {/* Mobile Sidebar Overlay */}
+      {isMobileMenuOpen && (
+          <div 
+            className="fixed inset-0 bg-black/50 z-30 md:hidden backdrop-blur-sm"
+            onClick={() => setIsMobileMenuOpen(false)}
+          />
+      )}
+
+      {/* Sidebar (Responsive Drawer) */}
+      <aside className={`
+          fixed md:relative top-0 left-0 h-full w-64 bg-brand-primary border-r border-brand-secondary 
+          flex flex-col shrink-0 z-40 transform transition-transform duration-300 ease-in-out
+          ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
+          pt-16 md:pt-0
+      `}>
+        <div className="p-6 border-b border-brand-secondary hidden md:block">
+          <h1 className="text-xl font-bold text-white tracking-widest flex items-center gap-2">
+            <ShieldCheck className="text-brand-accent" /> S.I.E.
+          </h1>
+          <div className="mt-2">
+            <p className="text-xs text-white font-medium">{currentUser?.name}</p>
+            <p className="text-[10px] text-brand-accent opacity-80 uppercase tracking-wider">{currentUser?.role === 'ADMIN' ? 'Administrador' : 'Operador'}</p>
+            <div className="flex flex-col gap-1 mt-1">
+                <div className="flex items-center gap-1">
+                    {isBackendConnected ? <Wifi size={10} className="text-green-500"/> : <WifiOff size={10} className="text-orange-500"/>}
+                    <span className={`text-[9px] font-mono ${isBackendConnected ? 'text-green-600' : 'text-orange-500'}`}>
+                        {isBackendConnected ? 'DB Online' : 'DB Offline'}
+                    </span>
+                </div>
+                <div className="flex items-center gap-1">
+                    <Sparkles size={10} className={isAiReady ? "text-purple-500" : "text-gray-500"}/>
+                    <span className={`text-[9px] font-mono ${isAiReady ? 'text-purple-400' : 'text-gray-500'}`}>
+                        {isAiReady ? 'IA Pronta' : 'IA Inativa'}
+                    </span>
+                </div>
             </div>
+          </div>
         </div>
+        
+        {/* Mobile User Info in Drawer */}
+        <div className="p-6 border-b border-brand-secondary md:hidden bg-brand-secondary/30">
+            <p className="text-xs text-white font-medium">{currentUser?.name}</p>
+            <p className="text-[10px] text-brand-accent opacity-80 uppercase tracking-wider">{currentUser?.role}</p>
+        </div>
+
+        <nav className="flex-1 p-4 space-y-2 overflow-y-auto">
+          {/* ... Navigation Buttons ... */}
+          <button onClick={() => setView(AppView.DASHBOARD)} className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm transition-all ${view === AppView.DASHBOARD ? 'bg-brand-accent/20 text-brand-accent border border-brand-accent/30' : 'hover:bg-brand-secondary'}`}>
+            <BarChart3 size={18} /> Dashboard
+          </button>
+          
+          <div className="pt-4 pb-1 pl-4 text-[10px] uppercase text-gray-500 font-bold">Módulos</div>
+          
+          <button onClick={() => setView(AppView.RESIDENTS_LIST)} className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm transition-all ${view === AppView.RESIDENTS_LIST ? 'bg-brand-accent/20 text-brand-accent border border-brand-accent/30' : 'hover:bg-brand-secondary'}`}>
+                <Users size={18} /> Cadastros
+            </button>
+          
+          <button onClick={() => setView(AppView.ID_GENERATOR)} className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm transition-all ${view === AppView.ID_GENERATOR ? 'bg-brand-accent/20 text-brand-accent border border-brand-accent/30' : 'hover:bg-brand-secondary'}`}>
+                <FileText size={18} /> Editor de ID
+            </button>
+
+          {currentUser?.role === 'ADMIN' && (
+              <>
+                <div className="pt-4 pb-1 pl-4 text-[10px] uppercase text-gray-500 font-bold">Administração</div>
+                <button onClick={() => setView(AppView.TEMPLATE_EDITOR)} className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm transition-all ${view === AppView.TEMPLATE_EDITOR ? 'bg-brand-accent/20 text-brand-accent border border-brand-accent/30' : 'hover:bg-brand-secondary'}`}>
+                    <Palette size={18} /> Templates ID
+                </button>
+                <button onClick={() => setView(AppView.SYSTEM_SETTINGS)} className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm transition-all ${view === AppView.SYSTEM_SETTINGS ? 'bg-brand-accent/20 text-brand-accent border border-brand-accent/30' : 'hover:bg-brand-secondary'}`}>
+                    <Building size={18} /> Sistema
+                </button>
+                <button onClick={() => setView(AppView.USERS_LIST)} className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm transition-all ${view === AppView.USERS_LIST ? 'bg-brand-accent/20 text-brand-accent border border-brand-accent/30' : 'hover:bg-brand-secondary'}`}>
+                    <Settings size={18} /> Usuários
+                </button>
+              </>
+          )}
+        </nav>
+         
+         <div className="p-4 border-t border-brand-secondary">
+             <button onClick={handleLogout} className="w-full flex items-center justify-center gap-2 text-xs text-red-400 hover:text-red-300 hover:bg-red-500/10 py-2 rounded transition">
+                 <LogOut size={12} /> Sair
+             </button>
+         </div>
+      </aside>
+
+      {/* Main Content */}
+      <main className="flex-1 overflow-y-auto h-[calc(100vh-60px)] md:h-screen">
+        {view !== AppView.TEMPLATE_EDITOR && (
+             <header className="hidden md:flex h-16 border-b border-brand-secondary items-center justify-between px-8 bg-brand-primary/50 backdrop-blur-md sticky top-0 z-30">
+                <h2 className="text-lg font-semibold text-white">
+                    {view === AppView.ID_GENERATOR && 'Central de Identificação - AMC'}
+                    {view === AppView.RESIDENTS_LIST && 'Banco de Dados: Moradores'}
+                    {view === AppView.USERS_LIST && 'Controle de Acesso'}
+                    {view === AppView.SYSTEM_SETTINGS && 'Configuração do Sistema'}
+                    {view === AppView.DASHBOARD && 'Dashboard Geral'}
+                </h2>
+                <Tooltip text="Mecanismo de IA Google Gemini operando">
+                    <span className={`text-xs px-3 py-1 rounded-full border font-mono flex items-center gap-2 ${isAiReady ? 'bg-green-900/30 border-green-500/30 text-green-400' : 'bg-red-900/30 border-red-500/30 text-red-400'}`}>
+                        <Sparkles size={10}/> {isAiReady ? 'Sistema Inteligente Ativo' : 'IA Indisponível'}
+                    </span>
+                </Tooltip>
+             </header>
+        )}
 
         {view === AppView.TEMPLATE_EDITOR && (
             <TemplateEditor onBack={() => setView(AppView.DASHBOARD)} />
@@ -1056,7 +1212,8 @@ const App: React.FC = () => {
              </div>
         )}
 
-    </Layout>
+      </main>
+    </div>
   );
 };
 

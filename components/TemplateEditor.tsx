@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { CustomTemplate, TemplateElement, ElementType, Resident } from '@/types';
-import { Type, Image as ImageIcon, Trash2, Save, Upload } from 'lucide-react';
+import { Type, Image as ImageIcon, Trash2, Save, Upload, Layout } from 'lucide-react';
 import { api } from '@/services/api';
 
 interface TemplateEditorProps {
@@ -22,6 +22,14 @@ export const TemplateEditor: React.FC<TemplateEditorProps> = ({ onBack }) => {
     const [selectedElementId, setSelectedElementId] = useState<string | null>(null);
     const [isSaving, setIsSaving] = useState(false);
     const canvasRef = useRef<HTMLDivElement>(null);
+
+    const PRESETS = [
+        { name: 'Padrão CR80 (350x220)', width: 350, height: 220 },
+        { name: 'Vertical (220x350)', width: 220, height: 350 },
+        { name: 'Cartão Visita (350x200)', width: 350, height: 200 },
+        { name: 'Credencial (300x450)', width: 300, height: 450 },
+        { name: 'Quadrado (350x350)', width: 350, height: 350 },
+    ];
 
     // --- Loading ---
     useEffect(() => {
@@ -150,6 +158,13 @@ export const TemplateEditor: React.FC<TemplateEditorProps> = ({ onBack }) => {
 
     const selectedElement = currentTemplate.elements.find(el => el.id === selectedElementId);
 
+    const applyPreset = (e: React.ChangeEvent<HTMLSelectElement>) => {
+        const preset = PRESETS.find(p => p.name === e.target.value);
+        if (preset) {
+            setCurrentTemplate(prev => ({ ...prev, width: preset.width, height: preset.height }));
+        }
+    };
+
     return (
         <div className="flex flex-col h-full bg-brand-dark text-white p-4 overflow-hidden">
             <div className="flex justify-between items-center mb-4 border-b border-gray-700 pb-2">
@@ -215,7 +230,7 @@ export const TemplateEditor: React.FC<TemplateEditorProps> = ({ onBack }) => {
                 <div className="flex-1 bg-gray-900 flex items-center justify-center relative overflow-auto rounded-lg border border-gray-700">
                     <div 
                         ref={canvasRef}
-                        className="bg-white shadow-2xl relative overflow-hidden"
+                        className="bg-white shadow-2xl relative overflow-hidden transition-all duration-300"
                         style={{ width: currentTemplate.width, height: currentTemplate.height }}
                     >
                         {/* Background */}
@@ -269,24 +284,31 @@ export const TemplateEditor: React.FC<TemplateEditorProps> = ({ onBack }) => {
                         />
                      </div>
                      
-                     <div className="grid grid-cols-2 gap-2 mb-4">
-                        <div>
-                            <label className="text-xs text-gray-400 block mb-1">Largura (px)</label>
-                            <input 
-                                type="number" 
-                                value={currentTemplate.width} 
-                                onChange={e => setCurrentTemplate({...currentTemplate, width: parseInt(e.target.value) || 0})}
-                                className="w-full bg-brand-primary border border-gray-600 rounded p-1 text-sm text-white"
-                            />
-                        </div>
-                        <div>
-                            <label className="text-xs text-gray-400 block mb-1">Altura (px)</label>
-                            <input 
-                                type="number" 
-                                value={currentTemplate.height} 
-                                onChange={e => setCurrentTemplate({...currentTemplate, height: parseInt(e.target.value) || 0})}
-                                className="w-full bg-brand-primary border border-gray-600 rounded p-1 text-sm text-white"
-                            />
+                     <div className="mb-4">
+                        <label className="text-xs text-gray-400 block mb-1 flex items-center gap-1"><Layout size={12}/> Dimensões</label>
+                        <select onChange={applyPreset} className="w-full bg-brand-primary border border-gray-600 rounded p-1 text-xs text-gray-300 mb-2">
+                            <option value="">Tamanho Personalizado</option>
+                            {PRESETS.map(p => <option key={p.name} value={p.name}>{p.name}</option>)}
+                        </select>
+                        <div className="grid grid-cols-2 gap-2">
+                            <div>
+                                <label className="text-[10px] text-gray-500">Largura</label>
+                                <input 
+                                    type="number" 
+                                    value={currentTemplate.width} 
+                                    onChange={e => setCurrentTemplate({...currentTemplate, width: parseInt(e.target.value) || 0})}
+                                    className="w-full bg-brand-primary border border-gray-600 rounded p-1 text-sm text-white"
+                                />
+                            </div>
+                            <div>
+                                <label className="text-[10px] text-gray-500">Altura</label>
+                                <input 
+                                    type="number" 
+                                    value={currentTemplate.height} 
+                                    onChange={e => setCurrentTemplate({...currentTemplate, height: parseInt(e.target.value) || 0})}
+                                    className="w-full bg-brand-primary border border-gray-600 rounded p-1 text-sm text-white"
+                                />
+                            </div>
                         </div>
                      </div>
 
