@@ -1,11 +1,16 @@
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Camera, Sparkles, Upload, FileText, Download, ShieldCheck, User as UserIcon, ZoomIn, Move, Settings, Lock, LayoutTemplate, Image as ImageIcon, FileImage, AlertTriangle, CheckCircle, BarChart3, Users, Search, Edit, Trash2, Plus, Info, Save, X, Building, Phone, Calendar, Paperclip, File, Wifi, WifiOff, LogOut, Palette, Key, Check, FileCheck } from 'lucide-react';
-import { Resident, ProcessingStatus, AppView, IDTemplate, PhotoSettings, User, SystemUser, AssociationData, Director, CustomTemplate, ApiKey } from './types';
-import { analyzeDocumentText, editResidentPhoto, fetchCompanyData, validateApiKey } from './services/geminiService';
-import { api } from './services/api'; 
-import { IDCard } from './components/IDCard';
-import { TemplateEditor } from './components/TemplateEditor';
+import { Sparkles, Upload, FileText, Download, ShieldCheck, User as UserIcon, Settings, Lock, LayoutTemplate, Image as ImageIcon, FileImage, BarChart3, Users, Search, Plus, Save, X, Building, Wifi, WifiOff, LogOut, Palette } from 'lucide-react';
+import { Resident, ProcessingStatus, AppView, IDTemplate, PhotoSettings, User, SystemUser, AssociationData, CustomTemplate } from '@/types';
+import { analyzeDocumentText, editResidentPhoto, fetchCompanyData } from '@/services/geminiService';
+import { api } from '@/services/api'; 
+import { IDCard } from '@/components/IDCard';
+import { TemplateEditor } from '@/components/TemplateEditor';
+import { RegistrationStatusPanel } from '@/components/RegistrationStatusPanel';
+import { ResidentsListView } from '@/components/ResidentsListView';
+import { UsersListView } from '@/components/UsersListView';
+import { SystemSettingsView } from '@/components/SystemSettingsView';
+import { Tooltip } from '@/components/Tooltip';
 import html2canvas from 'html2canvas';
 
 // Utility to convert file to base64
@@ -21,22 +26,6 @@ const fileToBase64 = (file: File): Promise<string> => {
     reader.onerror = error => reject(error);
   });
 };
-
-// --- TOOLTIP COMPONENT ---
-interface TooltipProps {
-  text: string;
-  children: React.ReactNode;
-}
-
-const Tooltip: React.FC<TooltipProps> = ({ text, children }) => (
-    <div className="group relative flex items-center w-full">
-      {children}
-      <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 hidden group-hover:block bg-gray-900 text-white text-[10px] p-2 rounded w-max max-w-[200px] z-50 pointer-events-none border border-gray-700 shadow-xl">
-        {text}
-        <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-gray-900"></div>
-      </div>
-    </div>
-);
 
 const App: React.FC = () => {
   // --- Auth State ---
@@ -450,612 +439,9 @@ const App: React.FC = () => {
       }
   };
 
-  // --- Components ---
-  
-  const RegistrationStatusPanel = () => {
-      const fields = [
-          { key: 'name', label: 'Nome Completo' },
-          { key: 'cpf', label: 'CPF' },
-          { key: 'rg', label: 'RG' },
-          { key: 'address', label: 'Endereço' },
-          { key: 'birthDate', label: 'Data de Nascimento' },
-          { key: 'photoUrl', label: 'Foto de Perfil' }
-      ];
-
-      const missingFields = fields.filter(f => !resident[f.key as keyof Resident]);
-      const total = fields.length;
-      const filled = total - missingFields.length;
-      const percentage = Math.round((filled / total) * 100);
-
-      let statusColor = 'bg-red-500';
-      if (percentage > 40) statusColor = 'bg-yellow-500';
-      if (percentage === 100) statusColor = 'bg-green-500';
-
-      return (
-        <div className="bg-brand-secondary rounded-xl p-4 border border-brand-secondary">
-             <div className="flex items-center gap-2 mb-3 border-b border-gray-700 pb-2">
-                 <BarChart3 className="text-brand-accent w-4 h-4" />
-                 <h4 className="text-white text-sm font-bold uppercase tracking-wide">Status do Cadastro</h4>
-             </div>
-             
-             <Tooltip text="Indica o quão completo está o cadastro atual.">
-                 <div className="mb-4 w-full cursor-help">
-                     <div className="flex justify-between text-xs mb-1">
-                         <span className="text-gray-400">Progresso</span>
-                         <span className="text-white font-bold">{percentage}%</span>
-                     </div>
-                     <div className="w-full bg-brand-primary rounded-full h-2.5 overflow-hidden">
-                         <div className={`h-2.5 rounded-full transition-all duration-500 ${statusColor}`} style={{ width: `${percentage}%` }}></div>
-                     </div>
-                 </div>
-             </Tooltip>
-
-             {missingFields.length > 0 ? (
-                 <div className="bg-brand-primary/50 rounded p-3">
-                     <p className="text-[10px] text-gray-500 uppercase font-bold mb-2">Pendências Detectadas:</p>
-                     <ul className="space-y-1">
-                         {missingFields.map(field => (
-                             <li key={field.key} className="text-xs text-red-300 flex items-center gap-2">
-                                 <AlertTriangle size={10} />
-                                 Falta: <span className="font-semibold">{field.label}</span>
-                             </li>
-                         ))}
-                     </ul>
-                 </div>
-             ) : (
-                 <div className="bg-green-900/20 border border-green-500/30 rounded p-3 flex items-center gap-3">
-                     <CheckCircle className="text-green-500 w-6 h-6" />
-                     <div>
-                         <p className="text-xs text-green-400 font-bold uppercase">Cadastro Completo</p>
-                         <p className="text-[10px] text-gray-400">Pronto para impressão</p>
-                     </div>
-                 </div>
-             )}
-        </div>
-      );
-  }
-
-  const ResidentsListView = () => {
-      const [filter, setFilter] = useState('');
-      const [onlyPending, setOnlyPending] = useState(false);
-
-      const filtered = residentsList.filter(r => {
-          const matchesText = (r.name || '').toLowerCase().includes(filter.toLowerCase()) || (r.cpf || '').includes(filter);
-          if (onlyPending) {
-              return matchesText && (!r.name || !r.cpf || !r.photoUrl);
-          }
-          return matchesText;
-      });
-
-      return (
-          <div className="p-8 max-w-[1600px] mx-auto">
-              <div className="flex justify-between items-center mb-6">
-                  <h2 className="text-2xl font-bold text-white flex items-center gap-2"><Users className="text-brand-accent"/> Cadastro de Moradores</h2>
-                  <Tooltip text="Criar um novo registro em branco">
-                    <button onClick={handleNewResident} className="bg-brand-accent hover:bg-cyan-500 text-brand-dark px-4 py-2 rounded-lg font-bold flex items-center gap-2">
-                        <Plus size={18} /> Novo Morador
-                    </button>
-                  </Tooltip>
-              </div>
-
-              <div className="bg-brand-secondary rounded-xl p-4 mb-6 flex gap-4 items-center">
-                  <div className="relative flex-1">
-                      <Search className="absolute left-3 top-2.5 text-gray-500" size={18} />
-                      <input 
-                        value={filter}
-                        onChange={e => setFilter(e.target.value)}
-                        placeholder="Buscar por Nome ou CPF..."
-                        className="w-full bg-brand-primary border border-gray-700 rounded-lg py-2 pl-10 pr-4 text-white focus:border-brand-accent outline-none"
-                      />
-                  </div>
-                  <Tooltip text="Exibir apenas cadastros incompletos">
-                    <button 
-                        onClick={() => setOnlyPending(!onlyPending)}
-                        className={`px-4 py-2 rounded-lg border text-sm font-medium transition ${onlyPending ? 'bg-red-500/20 border-red-500 text-red-400' : 'bg-brand-primary border-gray-700 text-gray-400 hover:text-white'}`}
-                    >
-                        <AlertTriangle size={16} className="inline mr-2" />
-                        Apenas Pendentes
-                    </button>
-                  </Tooltip>
-              </div>
-
-              <div className="bg-brand-secondary rounded-xl border border-gray-700 overflow-hidden">
-                  <table className="w-full text-left">
-                      <thead className="bg-brand-primary text-gray-400 text-xs uppercase">
-                          <tr>
-                              <th className="p-4">Status</th>
-                              <th className="p-4">Nome</th>
-                              <th className="p-4">CPF</th>
-                              <th className="p-4">Função</th>
-                              <th className="p-4">Endereço</th>
-                              <th className="p-4 text-right">Ações</th>
-                          </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-700">
-                          {filtered.length === 0 && (
-                              <tr><td colSpan={6} className="p-8 text-center text-gray-500">Nenhum registro encontrado.</td></tr>
-                          )}
-                          {filtered.map(r => {
-                              const isComplete = r.name && r.cpf && r.photoUrl;
-                              return (
-                                  <tr key={r.id} className="hover:bg-brand-primary/50 transition">
-                                      <td className="p-4">
-                                          <Tooltip text={isComplete ? "Cadastro Completo" : "Cadastro Incompleto"}>
-                                            {isComplete ? <CheckCircle size={18} className="text-green-500"/> : <AlertTriangle size={18} className="text-red-500"/>}
-                                          </Tooltip>
-                                      </td>
-                                      <td className="p-4 font-bold text-white">{r.name || 'Sem Nome'}</td>
-                                      <td className="p-4 font-mono text-gray-300">{r.cpf || '-'}</td>
-                                      <td className="p-4 text-blue-300">{r.role}</td>
-                                      <td className="p-4 text-gray-400 text-sm truncate max-w-xs">{r.address}</td>
-                                      <td className="p-4 flex justify-end gap-2">
-                                          <Tooltip text="Editar Carteirinha">
-                                            <button onClick={() => handleEditResident(r)} className="p-2 bg-blue-600/20 hover:bg-blue-600 text-blue-400 hover:text-white rounded transition">
-                                                <Edit size={16} />
-                                            </button>
-                                          </Tooltip>
-                                          <Tooltip text="Excluir Definitivamente">
-                                            <button onClick={() => handleDeleteResident(r.id)} className="p-2 bg-red-600/20 hover:bg-red-600 text-red-400 hover:text-white rounded transition">
-                                                <Trash2 size={16} />
-                                            </button>
-                                          </Tooltip>
-                                      </td>
-                                  </tr>
-                              )
-                          })}
-                      </tbody>
-                  </table>
-              </div>
-          </div>
-      )
-  }
-
-  const UsersListView = () => {
-      const [newUser, setNewUser] = useState<SystemUser>({ id: '', name: '', username: '', password: '', role: 'OPERADOR' });
-      
-      const handleAddUser = async (e: React.FormEvent) => {
-          e.preventDefault();
-          if(!newUser.username || !newUser.password) return;
-          try {
-              await api.createUser({ ...newUser, id: crypto.randomUUID() });
-              loadUsers();
-              setNewUser({ id: '', name: '', username: '', password: '', role: 'OPERADOR' });
-          } catch (e) { alert('Erro ao criar usuário'); }
-      };
-
-      const handleDeleteUser = async (id: string) => {
-          if(id === '1') { alert('Não é possível excluir o admin padrão.'); return; }
-          if(confirm('Excluir usuário?')) {
-              await api.deleteUser(id);
-              loadUsers();
-          }
-      }
-
-      return (
-        <div className="p-8 max-w-[1200px] mx-auto">
-             <h2 className="text-2xl font-bold text-white flex items-center gap-2 mb-6"><Settings className="text-brand-accent"/> Gestão de Usuários (Admin)</h2>
-             
-             <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-                 {/* Form */}
-                 <div className="bg-brand-secondary p-6 rounded-xl border border-gray-700 h-fit">
-                     <h3 className="text-white font-bold mb-4 uppercase text-sm">Novo Usuário</h3>
-                     <form onSubmit={handleAddUser} className="space-y-3">
-                         <input placeholder="Nome" value={newUser.name} onChange={e=>setNewUser({...newUser, name: e.target.value})} className="w-full bg-brand-primary border border-gray-700 rounded p-2 text-white text-sm" />
-                         <input placeholder="Login" value={newUser.username} onChange={e=>setNewUser({...newUser, username: e.target.value})} className="w-full bg-brand-primary border border-gray-700 rounded p-2 text-white text-sm" />
-                         <input placeholder="Senha" type="password" value={newUser.password} onChange={e=>setNewUser({...newUser, password: e.target.value})} className="w-full bg-brand-primary border border-gray-700 rounded p-2 text-white text-sm" />
-                         <select value={newUser.role} onChange={e=>setNewUser({...newUser, role: e.target.value as any})} className="w-full bg-brand-primary border border-gray-700 rounded p-2 text-white text-sm">
-                             <option value="OPERADOR">Operador</option>
-                             <option value="ADMIN">Administrador</option>
-                         </select>
-                         <Tooltip text="Adicionar acesso ao sistema">
-                            <button type="submit" className="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-2 rounded text-sm mt-2">Criar Usuário</button>
-                         </Tooltip>
-                     </form>
-                 </div>
-
-                 {/* List */}
-                 <div className="md:col-span-2 bg-brand-secondary rounded-xl border border-gray-700 overflow-hidden">
-                     <table className="w-full text-left">
-                         <thead className="bg-brand-primary text-gray-400 text-xs uppercase">
-                             <tr>
-                                 <th className="p-4">Nome</th>
-                                 <th className="p-4">Login</th>
-                                 <th className="p-4">Perfil</th>
-                                 <th className="p-4 text-right">Ação</th>
-                             </tr>
-                         </thead>
-                         <tbody className="divide-y divide-gray-700">
-                             {systemUsers.map(u => (
-                                 <tr key={u.id}>
-                                     <td className="p-4 text-white font-bold">{u.name}</td>
-                                     <td className="p-4 text-gray-400">{u.username}</td>
-                                     <td className="p-4"><span className={`text-xs px-2 py-1 rounded ${u.role === 'ADMIN' ? 'bg-purple-500/20 text-purple-300' : 'bg-blue-500/20 text-blue-300'}`}>{u.role}</span></td>
-                                     <td className="p-4 text-right">
-                                         {u.username !== 'admin' && (
-                                             <button onClick={() => handleDeleteUser(u.id)} className="text-red-400 hover:text-white"><Trash2 size={16}/></button>
-                                         )}
-                                     </td>
-                                 </tr>
-                             ))}
-                         </tbody>
-                     </table>
-                 </div>
-             </div>
-        </div>
-      )
-  }
-
-  // --- API KEY MANAGER COMPONENT ---
-  const ApiKeyManager = () => {
-    const [keys, setKeys] = useState<ApiKey[]>([]);
-    const [newKey, setNewKey] = useState({ label: '', key: '' });
-    const [isValidating, setIsValidating] = useState(false);
-
-    useEffect(() => {
-        loadKeys();
-    }, []);
-
-    const loadKeys = async () => {
-        try {
-            const data = await api.getApiKeys();
-            setKeys(data);
-        } catch (e) { console.error("Error loading keys", e); }
-    };
-
-    const handleAddKey = async () => {
-        if (!newKey.key || !newKey.label) return alert("Preencha o Nome e a Chave");
-        
-        setIsValidating(true);
-        // 1. Validate with Gemini
-        const isValid = await validateApiKey(newKey.key);
-        setIsValidating(false);
-
-        if (!isValid) {
-            return alert("Chave inválida ou inativa na Google AI Studio. Verifique e tente novamente.");
-        }
-
-        // 2. Save
-        try {
-            await api.addApiKey({
-                id: crypto.randomUUID(),
-                label: newKey.label,
-                key: newKey.key,
-                isActive: keys.length === 0, // First key auto active
-                createdAt: new Date().toISOString()
-            });
-            setNewKey({ label: '', key: '' });
-            loadKeys();
-            alert("Chave adicionada com sucesso!");
-        } catch (e) {
-            alert("Erro ao salvar chave");
-        }
-    };
-
-    const toggleStatus = async (id: string, currentStatus: boolean) => {
-        try {
-            await api.updateApiKeyStatus(id, !currentStatus);
-            loadKeys();
-        } catch (e) { alert("Erro ao atualizar status"); }
-    };
-
-    const deleteKey = async (id: string) => {
-        if (confirm("Tem certeza? O sistema pode parar de funcionar se não houver outra chave ativa.")) {
-            await api.deleteApiKey(id);
-            loadKeys();
-        }
-    };
-
-    return (
-        <div className="bg-brand-secondary p-6 rounded-xl border border-gray-700 shadow-lg mt-6">
-             <h3 className="text-white font-bold mb-4 flex items-center gap-2 uppercase text-sm">
-                 <Key size={16} className="text-yellow-500"/> Gestão de Chaves API (Gemini)
-             </h3>
-             <p className="text-xs text-gray-400 mb-4">
-                 O sistema usará exclusivamente a chave marcada como <span className="text-green-400">ATIVA</span>. 
-                 A chave do arquivo .env será ignorada.
-             </p>
-
-             <div className="flex gap-4 mb-6">
-                 <input 
-                    placeholder="Identificador (ex: Chave Pessoal)" 
-                    value={newKey.label} 
-                    onChange={e => setNewKey({...newKey, label: e.target.value})}
-                    className="flex-1 bg-brand-primary border border-gray-700 rounded p-2 text-white text-sm"
-                 />
-                 <input 
-                    placeholder="Cole a API Key aqui (AIza...)" 
-                    value={newKey.key} 
-                    onChange={e => setNewKey({...newKey, key: e.target.value})}
-                    type="password"
-                    className="flex-[2] bg-brand-primary border border-gray-700 rounded p-2 text-white text-sm"
-                 />
-                 <button 
-                    onClick={handleAddKey} 
-                    disabled={isValidating}
-                    className="bg-green-600 hover:bg-green-700 text-white px-4 rounded text-sm font-bold disabled:opacity-50"
-                 >
-                     {isValidating ? "Validando..." : "Adicionar"}
-                 </button>
-             </div>
-
-             <div className="space-y-2">
-                 {keys.length === 0 && <p className="text-red-400 text-xs">Nenhuma chave configurada. O sistema não funcionará.</p>}
-                 {keys.map(k => (
-                     <div key={k.id} className="flex items-center justify-between bg-brand-primary p-3 rounded border border-gray-700">
-                         <div className="flex items-center gap-3">
-                             <div className={`w-3 h-3 rounded-full ${k.isActive ? 'bg-green-500 shadow-[0_0_10px_rgba(34,197,94,0.5)]' : 'bg-gray-600'}`}></div>
-                             <div>
-                                 <p className="text-sm font-bold text-white">{k.label}</p>
-                                 <p className="text-[10px] text-gray-500 font-mono">
-                                     {k.key.substring(0, 8)}...{k.key.substring(k.key.length - 4)}
-                                 </p>
-                             </div>
-                         </div>
-                         <div className="flex items-center gap-3">
-                             {!k.isActive && (
-                                 <button onClick={() => toggleStatus(k.id, k.isActive)} className="text-xs text-gray-400 hover:text-green-400 border border-gray-600 px-2 py-1 rounded">
-                                     Ativar
-                                 </button>
-                             )}
-                             {k.isActive && <span className="text-xs text-green-500 font-bold px-2">EM USO</span>}
-                             
-                             <button onClick={() => deleteKey(k.id)} className="text-red-400 hover:text-white p-1">
-                                 <Trash2 size={16}/>
-                             </button>
-                         </div>
-                     </div>
-                 ))}
-             </div>
-        </div>
-    );
-  };
-
-  const SystemSettingsView = () => {
-    const handleDirectorAdd = () => {
-        setAssociationData(prev => ({
-            ...prev,
-            management: {
-                ...prev.management,
-                directors: [...prev.management.directors, { id: crypto.randomUUID(), name: '', title: 'Diretor' }]
-            }
-        }));
-    };
-
-    const handleDirectorRemove = (id: string) => {
-        setAssociationData(prev => ({
-            ...prev,
-            management: {
-                ...prev.management,
-                directors: prev.management.directors.filter(d => d.id !== id)
-            }
-        }));
-    };
-
-    const handleDirectorChange = (id: string, field: 'name' | 'title', value: string) => {
-        setAssociationData(prev => ({
-            ...prev,
-            management: {
-                ...prev.management,
-                directors: prev.management.directors.map(d => d.id === id ? { ...d, [field]: value } : d)
-            }
-        }));
-    };
-
-    const handlePdfUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-        if (e.target.files && e.target.files[0]) {
-            const file = e.target.files[0];
-            if (file.type !== 'application/pdf') {
-                return alert("Por favor, selecione apenas arquivos PDF.");
-            }
-            const reader = new FileReader();
-            reader.onload = (ev) => {
-                if (ev.target?.result) {
-                    const base64 = ev.target.result as string;
-                    setAssociationData(prev => ({
-                        ...prev,
-                        management: {
-                            ...prev.management,
-                            electionMinutesPdf: base64
-                        }
-                    }));
-                }
-            };
-            reader.readAsDataURL(file);
-        }
-    };
-
-    const inputClass = "w-full bg-brand-primary border border-gray-700 rounded-lg p-2.5 text-white text-sm focus:border-brand-accent outline-none";
-    const labelClass = "block text-xs uppercase text-gray-500 font-bold mb-1";
-
-    return (
-        <div className="p-8 max-w-[1200px] mx-auto">
-            <h2 className="text-2xl font-bold text-white flex items-center gap-2 mb-6"><Building className="text-brand-accent"/> Configurações da Associação</h2>
-            
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                <div className="space-y-6">
-                    {/* Basic Info */}
-                    <div className="bg-brand-secondary p-6 rounded-xl border border-gray-700 shadow-lg">
-                        <h3 className="text-white font-bold mb-4 flex items-center gap-2 uppercase text-sm"><FileText size={16}/> Dados Jurídicos</h3>
-                        <div className="space-y-4">
-                            <div>
-                                <label className={labelClass}>Nome da Associação (Fantasia)</label>
-                                <input value={associationData.name} onChange={e => setAssociationData({...associationData, name: e.target.value})} className={inputClass} />
-                            </div>
-                            <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                    <label className={labelClass}>CNPJ</label>
-                                    <div className="relative">
-                                        <input value={associationData.cnpj} onChange={e => setAssociationData({...associationData, cnpj: e.target.value})} className={inputClass} />
-                                        <button onClick={handleCnpjLookup} disabled={status.isSearching} className="absolute right-1 top-1 bg-brand-accent/20 p-1.5 rounded hover:bg-brand-accent text-brand-accent hover:text-white transition">
-                                            {status.isSearching ? <div className="animate-spin w-4 h-4 border-2 border-current border-t-transparent rounded-full"/> : <Search size={16}/>}
-                                        </button>
-                                    </div>
-                                </div>
-                                <div>
-                                    <label className={labelClass}>Razão Social</label>
-                                    <input value={associationData.companyName} onChange={e => setAssociationData({...associationData, companyName: e.target.value})} className={inputClass} />
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* Address */}
-                    <div className="bg-brand-secondary p-6 rounded-xl border border-gray-700 shadow-lg">
-                        <h3 className="text-white font-bold mb-4 flex items-center gap-2 uppercase text-sm"><Move size={16}/> Endereço & Contato</h3>
-                        <div className="space-y-4">
-                            <div className="grid grid-cols-3 gap-4">
-                                <div className="col-span-2">
-                                    <label className={labelClass}>Logradouro</label>
-                                    <input value={associationData.address.street} onChange={e => setAssociationData({...associationData, address: {...associationData.address, street: e.target.value}})} className={inputClass} />
-                                </div>
-                                <div>
-                                    <label className={labelClass}>Número</label>
-                                    <input value={associationData.address.number} onChange={e => setAssociationData({...associationData, address: {...associationData.address, number: e.target.value}})} className={inputClass} />
-                                </div>
-                            </div>
-                            <div className="grid grid-cols-3 gap-4">
-                                <div>
-                                    <label className={labelClass}>Cidade</label>
-                                    <input value={associationData.address.city} onChange={e => setAssociationData({...associationData, address: {...associationData.address, city: e.target.value}})} className={inputClass} />
-                                </div>
-                                <div>
-                                    <label className={labelClass}>Estado</label>
-                                    <input value={associationData.address.state} onChange={e => setAssociationData({...associationData, address: {...associationData.address, state: e.target.value}})} className={inputClass} />
-                                </div>
-                                <div>
-                                    <label className={labelClass}>CEP</label>
-                                    <input value={associationData.address.zip} onChange={e => setAssociationData({...associationData, address: {...associationData.address, zip: e.target.value}})} className={inputClass} />
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    {/* NEW: API KEY MANAGEMENT */}
-                    <ApiKeyManager />
-
-                </div>
-
-                <div className="space-y-6">
-                    {/* Management */}
-                    <div className="bg-brand-secondary p-6 rounded-xl border border-gray-700 shadow-lg">
-                        <h3 className="text-white font-bold mb-4 flex items-center gap-2 uppercase text-sm"><Users size={16}/> Gestão & Diretoria</h3>
-                        <div className="space-y-4">
-                            <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                    <label className={labelClass}>Presidente</label>
-                                    <input value={associationData.management.president} onChange={e => setAssociationData({...associationData, management: {...associationData.management, president: e.target.value}})} className={inputClass} />
-                                </div>
-                                <div>
-                                    <label className={labelClass}>Vice-Presidente</label>
-                                    <input value={associationData.management.vicePresident} onChange={e => setAssociationData({...associationData, management: {...associationData.management, vicePresident: e.target.value}})} className={inputClass} />
-                                </div>
-                            </div>
-                            <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                    <label className={labelClass}>Início Mandato</label>
-                                    <input type="month" value={associationData.management.mandateStart} onChange={e => setAssociationData({...associationData, management: {...associationData.management, mandateStart: e.target.value}})} className={inputClass} />
-                                </div>
-                                <div>
-                                    <label className={labelClass}>Fim Mandato</label>
-                                    <input type="month" value={associationData.management.mandateEnd} onChange={e => setAssociationData({...associationData, management: {...associationData.management, mandateEnd: e.target.value}})} className={inputClass} />
-                                </div>
-                            </div>
-
-                             {/* Election Minutes PDF (ATA) */}
-                             <div className="border-t border-gray-700 pt-4">
-                                <label className={labelClass}>Documentação Oficial (Ata da Eleição)</label>
-                                {!associationData.management.electionMinutesPdf ? (
-                                    <label className="w-full border-2 border-dashed border-gray-600 hover:border-brand-accent rounded-lg p-4 flex flex-col items-center justify-center cursor-pointer bg-brand-primary/30 transition-colors">
-                                        <Paperclip className="text-gray-400 mb-1" size={20}/>
-                                        <span className="text-xs text-gray-400 font-bold uppercase">Carregar PDF da Ata</span>
-                                        <input type="file" accept="application/pdf" className="hidden" onChange={handlePdfUpload} />
-                                    </label>
-                                ) : (
-                                    <div className="bg-brand-primary border border-gray-600 rounded-lg p-3 flex items-center justify-between">
-                                        <div className="flex items-center gap-3">
-                                            <FileText className="text-red-400" size={24}/>
-                                            <div>
-                                                <p className="text-xs text-white font-bold uppercase">Ata da Eleição.pdf</p>
-                                                <p className="text-[10px] text-gray-500">Documento Anexado</p>
-                                            </div>
-                                        </div>
-                                        <div className="flex items-center gap-2">
-                                            <a 
-                                                href={associationData.management.electionMinutesPdf} 
-                                                download="Ata_Eleicao.pdf" 
-                                                className="p-1.5 bg-brand-secondary hover:bg-brand-accent text-brand-accent hover:text-white rounded transition"
-                                                title="Baixar PDF"
-                                            >
-                                                <Download size={16}/>
-                                            </a>
-                                            <button 
-                                                onClick={() => setAssociationData(prev => ({...prev, management: {...prev.management, electionMinutesPdf: null}}))} 
-                                                className="p-1.5 bg-brand-secondary hover:bg-red-600 text-red-400 hover:text-white rounded transition"
-                                                title="Remover"
-                                            >
-                                                <Trash2 size={16}/>
-                                            </button>
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
-
-                            {/* Dynamic Directors */}
-                            <div className="border-t border-gray-700 pt-4">
-                                <label className={`${labelClass} flex justify-between`}>
-                                    Diretores Adicionais 
-                                    <button onClick={handleDirectorAdd} className="text-brand-accent hover:text-white text-[10px] flex items-center gap-1"><Plus size={12}/> Adicionar</button>
-                                </label>
-                                <div className="space-y-2 max-h-40 overflow-y-auto">
-                                    {associationData.management.directors.map(dir => (
-                                        <div key={dir.id} className="flex gap-2">
-                                            <input value={dir.title} onChange={e => handleDirectorChange(dir.id, 'title', e.target.value)} className={`${inputClass} !py-1 !text-xs w-1/3`} placeholder="Cargo" />
-                                            <input value={dir.name} onChange={e => handleDirectorChange(dir.id, 'name', e.target.value)} className={`${inputClass} !py-1 !text-xs flex-1`} placeholder="Nome" />
-                                            <button onClick={() => handleDirectorRemove(dir.id)} className="text-red-400 hover:text-white p-1"><Trash2 size={14}/></button>
-                                        </div>
-                                    ))}
-                                    {associationData.management.directors.length === 0 && <p className="text-gray-500 text-xs italic">Nenhum diretor adicional.</p>}
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* Logo & Actions */}
-                    <div className="bg-brand-secondary p-6 rounded-xl border border-gray-700 shadow-lg">
-                         <h3 className="text-white font-bold mb-4 flex items-center gap-2 uppercase text-sm"><ImageIcon size={16}/> Identidade Visual</h3>
-                         <div className="flex gap-6 items-center">
-                             <div className="w-24 h-24 bg-brand-primary rounded-lg border border-gray-600 flex items-center justify-center overflow-hidden">
-                                 {organizationLogo ? (
-                                     <img src={organizationLogo} alt="Logo" className="w-full h-full object-contain" />
-                                 ) : (
-                                     <ShieldCheck size={32} className="text-gray-600"/>
-                                 )}
-                             </div>
-                             <div className="flex-1">
-                                 <label className="bg-brand-primary hover:bg-brand-accent/20 border border-gray-600 hover:border-brand-accent text-white px-4 py-2 rounded-lg cursor-pointer flex items-center gap-2 w-fit transition mb-2">
-                                     <Upload size={16} /> Carregar Nova Logo
-                                     <input type="file" accept="image/*" className="hidden" onChange={handleLogoUpload} />
-                                 </label>
-                                 <p className="text-[10px] text-gray-500">Recomendado: PNG com fundo transparente. Esta logo será usada na tela de login e nas carteirinhas.</p>
-                             </div>
-                         </div>
-                    </div>
-                </div>
-            </div>
-            
-            <div className="mt-8 flex justify-end">
-                <button onClick={handleAssociationSave} className="bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-8 rounded-lg shadow-lg flex items-center gap-2 transition">
-                    <Save size={20} /> Salvar Configurações
-                </button>
-            </div>
-        </div>
-    );
-  }
-
   // --- Views Logic ---
 
   if (view === AppView.LOGIN) {
-      // ... (Login view same as before)
       return (
           <div className="min-h-screen bg-brand-primary flex items-center justify-center p-4">
               <div className="bg-brand-secondary p-8 rounded-xl shadow-2xl w-full max-w-md border border-brand-accent/20">
@@ -1215,11 +601,28 @@ const App: React.FC = () => {
             <TemplateEditor onBack={() => setView(AppView.DASHBOARD)} />
         )}
 
-        {view === AppView.USERS_LIST && <UsersListView />}
+        {view === AppView.USERS_LIST && <UsersListView systemUsers={systemUsers} refreshUsers={loadUsers} />}
         
-        {view === AppView.SYSTEM_SETTINGS && <SystemSettingsView />}
+        {view === AppView.SYSTEM_SETTINGS && (
+            <SystemSettingsView 
+                associationData={associationData}
+                setAssociationData={setAssociationData}
+                organizationLogo={organizationLogo}
+                handleLogoUpload={handleLogoUpload}
+                handleCnpjLookup={handleCnpjLookup}
+                status={status}
+                onSave={handleAssociationSave}
+            />
+        )}
 
-        {view === AppView.RESIDENTS_LIST && <ResidentsListView />}
+        {view === AppView.RESIDENTS_LIST && (
+            <ResidentsListView 
+                residentsList={residentsList}
+                onEdit={handleEditResident}
+                onDelete={handleDeleteResident}
+                onNew={handleNewResident}
+            />
+        )}
 
         {view === AppView.ID_GENERATOR && (
             <div className="p-4 lg:p-8 grid grid-cols-1 xl:grid-cols-12 gap-6 max-w-[1600px] mx-auto">
@@ -1324,7 +727,7 @@ const App: React.FC = () => {
                     </div>
                     
                     {/* Registration Status */}
-                    <RegistrationStatusPanel />
+                    <RegistrationStatusPanel resident={resident} />
                 </div>
 
                 <div className="xl:col-span-7 space-y-6 flex flex-col">
