@@ -836,6 +836,7 @@ const App: React.FC = () => {
                                         associationData={associationData}
                                         idRef={idCardRef}
                                         onUpdate={handleCardUpdate}
+                                        onPhotoChange={setPhotoSettings} // Enable Interactive Zoom/Pan
                                     />
                                 </div>
                             </div>

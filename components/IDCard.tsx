@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef, useState } from 'react';
 import { Resident, IDTemplate, PhotoSettings, AssociationData, CustomTemplate } from '@/types';
 
 interface IDCardProps {
@@ -10,9 +10,10 @@ interface IDCardProps {
   associationData?: AssociationData;
   idRef?: React.RefObject<HTMLDivElement>;
   onUpdate?: (field: keyof Resident, value: string) => void;
+  onPhotoChange?: (settings: PhotoSettings) => void;
 }
 
-export const IDCard: React.FC<IDCardProps> = ({ resident, template, customTemplateData, photoSettings, organizationLogo, associationData, idRef, onUpdate }) => {
+export const IDCard: React.FC<IDCardProps> = ({ resident, template, customTemplateData, photoSettings, organizationLogo, associationData, idRef, onUpdate, onPhotoChange }) => {
   
   // Use association data or defaults
   const assocName = associationData?.name || "Associação de Moradores";
@@ -47,6 +48,54 @@ export const IDCard: React.FC<IDCardProps> = ({ resident, template, customTempla
     }
   };
 
+  // Photo Interaction Handlers
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+
+  const handleWheel = (e: React.WheelEvent) => {
+      if (!onPhotoChange) return;
+      e.preventDefault();
+      e.stopPropagation(); // Prevent page scroll
+      
+      const delta = -e.deltaY * 0.001;
+      const newZoom = Math.min(Math.max(photoSettings.zoom + delta, 0.5), 3);
+      
+      onPhotoChange({ ...photoSettings, zoom: newZoom });
+  };
+
+  const handleMouseDown = (e: React.MouseEvent) => {
+      if (!onPhotoChange) return;
+      setIsDragging(true);
+      setDragStart({ x: e.clientX, y: e.clientY });
+  };
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+      if (!isDragging || !onPhotoChange) return;
+      
+      const dx = (e.clientX - dragStart.x);
+      const dy = (e.clientY - dragStart.y);
+      
+      // Adjust sensitivity based on zoom level (inverse)
+      // Higher zoom = slower movement for precision
+      const speed = 1 / photoSettings.zoom; 
+
+      onPhotoChange({
+          ...photoSettings,
+          x: photoSettings.x + (dx * speed),
+          y: photoSettings.y + (dy * speed)
+      });
+      
+      setDragStart({ x: e.clientX, y: e.clientY });
+  };
+
+  const handleMouseUp = () => {
+      setIsDragging(false);
+  };
+
+  const handleMouseLeave = () => {
+      setIsDragging(false);
+  };
+
   // AMC Logo Component
   const AmcLogo = ({ className }: { className?: string }) => (
     <div className={`rounded-full bg-white flex items-center justify-center relative overflow-hidden ${organizationLogo ? '' : 'border-4 border-blue-800'} ${className}`}>
@@ -68,16 +117,30 @@ export const IDCard: React.FC<IDCardProps> = ({ resident, template, customTempla
 
   // Common Photo Render
   const renderPhoto = () => (
-    <div className="w-full h-full overflow-hidden relative bg-gray-200">
+    <div 
+        className={`w-full h-full overflow-hidden relative bg-gray-200 ${onPhotoChange ? 'cursor-move' : ''} group`}
+        onWheel={handleWheel}
+        onMouseDown={handleMouseDown}
+        onMouseMove={handleMouseMove}
+        onMouseUp={handleMouseUp}
+        onMouseLeave={handleMouseLeave}
+    >
       {resident.photoUrl ? (
-        <img 
-            src={resident.photoUrl} 
-            alt="Resident" 
-            className="w-full h-full object-cover transition-transform origin-center"
-            style={{
-                transform: `scale(${photoSettings.zoom}) translate(${photoSettings.x}px, ${photoSettings.y}px)`
-            }}
-        />
+        <>
+            <img 
+                src={resident.photoUrl} 
+                alt="Resident" 
+                className="w-full h-full object-cover transition-transform origin-center select-none pointer-events-none" // Disable pointer events on img to prevent ghost dragging
+                style={{
+                    transform: `scale(${photoSettings.zoom}) translate(${photoSettings.x}px, ${photoSettings.y}px)`
+                }}
+            />
+            {onPhotoChange && (
+                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors pointer-events-none border border-transparent group-hover:border-white/30 flex items-center justify-center">
+                    {/* Visual hint only on hover */}
+                </div>
+            )}
+        </>
       ) : (
         <div className="w-full h-full flex items-center justify-center text-gray-400 text-xs text-center p-1">
           Sem Foto
