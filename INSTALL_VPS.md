@@ -35,7 +35,7 @@ DB_HOST=127.0.0.1
 DB_USER=siecacaria
 DB_PASSWORD=Gegerminal180!
 DB_NAME=siecacaria
-API_KEY=AIzaSyAd62vmCl_Y7XkzTz-nSquW-teO230KK_g
+API_KEY=AIzaSyA-hlJFnF9aO3nBkDbv9IQPd3UIE7d5SJs
 ```
 
 ### Passo 1.4: Configurar Banco de Dados
@@ -105,3 +105,9 @@ sudo chmod -R 755 .
 ### Banco de Dados não conecta
 1. Verifique o `.env`.
 2. Teste a conexão manual: `mysql -u siecacaria -h 127.0.0.1 -p`
+
+### Erro Git: 'origin' does not appear
+Se ao tentar atualizar você receber erro de repositório:
+```bash
+bash FIX_GIT.sh
+```

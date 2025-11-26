@@ -126,6 +126,17 @@ const initDB = async () => {
             );
             console.log("⚠️ Usuário Admin criado (admin/admin)");
         }
+        
+        // Seed API Key if empty (Using the one provided by user as default seed if table is empty)
+        // Note: This logic runs once on new DBs.
+        const [keys] = await connection.query('SELECT * FROM api_keys');
+        if (keys.length === 0 && process.env.API_KEY) {
+             await connection.query(
+                'INSERT INTO api_keys (id, label, key_value, is_active) VALUES (?, ?, ?, ?)',
+                ['default-seed', 'Chave Padrão (.env)', process.env.API_KEY, true]
+            );
+             console.log("⚠️ Chave API Padrão inserida no banco.");
+        }
 
         await connection.commit();
         console.log("✅ Banco de Dados inicializado e otimizado.");
@@ -381,11 +392,17 @@ app.delete('/api/keys/:id', async (req, res) => {
 
 app.get('/api/keys/active', async (req, res) => {
     try {
+        // First try DB
         const [rows] = await pool.query('SELECT key_value FROM api_keys WHERE is_active = TRUE LIMIT 1');
         if (rows.length > 0) {
             res.json({ key: rows[0].key_value });
         } else {
-            res.status(404).json({ error: 'No active key found' });
+            // Fallback to Env if DB empty
+            if (process.env.API_KEY) {
+                res.json({ key: process.env.API_KEY });
+            } else {
+                res.status(404).json({ error: 'No active key found' });
+            }
         }
     } catch (err) {
         res.status(500).json({ error: err.message });
