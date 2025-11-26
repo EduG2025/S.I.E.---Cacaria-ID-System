@@ -29,7 +29,9 @@ const getAI = async () => {
   return new GoogleGenAI({ apiKey });
 };
 
-// --- 1. Fast Text Analysis (Flash) ---
+// --- 1. Fast Text Analysis (OCR/Extraction) ---
+// Model: gemini-2.5-flash
+// Reason: Best trade-off for speed and multimodal capabilities.
 export const analyzeDocumentText = async (base64Image: string, mimeType: string = 'image/jpeg'): Promise<any> => {
   try {
     const ai = await getAI();
@@ -44,7 +46,7 @@ export const analyzeDocumentText = async (base64Image: string, mimeType: string 
             }
           },
           {
-            text: "Extract the following data from this ID document: Name, CPF, RG, Date of Birth. Return as JSON."
+            text: "Extract the following data from this ID document: Name, CPF, RG, Date of Birth. Return strictly as JSON."
           }
         ]
       },
@@ -68,7 +70,9 @@ export const analyzeDocumentText = async (base64Image: string, mimeType: string 
   }
 };
 
-// --- 2. Image Editing (Nano Banana / Flash Image) ---
+// --- 2. Image Editing (Photo Studio) ---
+// Model: gemini-2.5-flash-image
+// Reason: Specialized model for image manipulation and editing via text prompts.
 export const editResidentPhoto = async (base64Image: string, prompt: string, mimeType: string = 'image/jpeg'): Promise<string> => {
   try {
     const ai = await getAI();
@@ -101,7 +105,9 @@ export const editResidentPhoto = async (base64Image: string, prompt: string, mim
   }
 };
 
-// --- 3. Image Generation (Pro Image) ---
+// --- 3. Image Generation (Assets) ---
+// Model: gemini-3-pro-image-preview
+// Reason: Highest quality generation model for creating assets from scratch (1K/2K/4K).
 export const generatePlaceholderAvatar = async (description: string, size: '1K' | '2K' | '4K', aspectRatio: string = '1:1'): Promise<string> => {
   try {
     const ai = await getAI();
@@ -130,16 +136,18 @@ export const generatePlaceholderAvatar = async (description: string, size: '1K' 
   }
 };
 
-// --- 4. Deep Analysis (Flash) ---
+// --- 4. Deep Analysis (Reasoning) ---
+// Model: gemini-3-pro-preview
+// Reason: Upgraded to Pro 3.0 for superior reasoning capabilities when detecting subtle signs of forgery or tampering.
 export const deepAnalyzeDocument = async (base64Image: string): Promise<string> => {
     try {
         const ai = await getAI();
         const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
+            model: 'gemini-3-pro-preview',
             contents: {
                 parts: [
                     { inlineData: { mimeType: 'image/jpeg', data: base64Image } },
-                    { text: "Analyze this document for signs of tampering or forgery. Be concise." }
+                    { text: "Analyze this document image meticulously for any visual signs of digital tampering, font inconsistencies, or forgery. Be concise and professional." }
                 ]
             }
         });
@@ -151,6 +159,8 @@ export const deepAnalyzeDocument = async (base64Image: string): Promise<string> 
 }
 
 // --- 5. Census Search (Search Grounding) ---
+// Model: gemini-2.5-flash
+// Reason: Flash 2.5 is highly efficient and low-latency for tool use (Google Search).
 export const searchPublicData = async (query: string): Promise<any> => {
   try {
     const ai = await getAI();
@@ -179,6 +189,8 @@ export const searchPublicData = async (query: string): Promise<any> => {
 };
 
 // --- 6. Company Data Search (CNPJ) ---
+// Model: gemini-2.5-flash
+// Reason: Flash 2.5 is ideal for quick data retrieval via tools.
 export const fetchCompanyData = async (cnpj: string): Promise<any> => {
   try {
     const ai = await getAI();
