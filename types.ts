@@ -22,14 +22,15 @@ export interface ProcessingStatus {
 export enum AppView {
   LOGIN = 'LOGIN',
   DASHBOARD = 'DASHBOARD',
-  ID_GENERATOR = 'ID_GENERATOR', // Módulo de Edição/Criação
-  RESIDENTS_LIST = 'RESIDENTS_LIST', // Novo Módulo Cadastros
-  USERS_LIST = 'USERS_LIST', // Novo Módulo Usuários
-  SYSTEM_SETTINGS = 'SYSTEM_SETTINGS', // Novo Módulo Sistema
+  ID_GENERATOR = 'ID_GENERATOR',
+  RESIDENTS_LIST = 'RESIDENTS_LIST',
+  USERS_LIST = 'USERS_LIST',
+  SYSTEM_SETTINGS = 'SYSTEM_SETTINGS',
+  TEMPLATE_EDITOR = 'TEMPLATE_EDITOR', // Nova view para o editor
   SETTINGS = 'SETTINGS',
 }
 
-export type IDTemplate = 'CLASSIC' | 'MODERN' | 'MINIMAL';
+export type IDTemplate = 'CLASSIC' | 'MODERN' | 'MINIMAL' | 'CUSTOM';
 
 export interface PhotoSettings {
   zoom: number;
@@ -41,7 +42,7 @@ export interface SystemUser {
   id: string;
   name: string;
   username: string;
-  password?: string; // Optional for listing
+  password?: string;
   role: 'ADMIN' | 'OPERADOR';
 }
 
@@ -53,13 +54,13 @@ export interface User {
 export interface Director {
   id: string;
   name: string;
-  title: string; // e.g. "Diretor Social", "Diretor de Esportes"
+  title: string;
 }
 
 export interface AssociationData {
   name: string;
   cnpj: string;
-  companyName: string; // Razão Social
+  companyName: string;
   address: {
     street: string;
     number: string;
@@ -80,6 +81,38 @@ export interface AssociationData {
     directors: Director[];
     mandateStart: string;
     mandateEnd: string;
-    electionMinutesPdf: string | null; // Base64 of the PDF
+    electionMinutesPdf: string | null;
   };
+}
+
+// --- Dynamic Template Types ---
+
+export type ElementType = 'text' | 'field' | 'image' | 'photo' | 'qrcode';
+
+export interface TemplateElement {
+  id: string;
+  type: ElementType;
+  label: string; // Para UI do editor
+  field?: keyof Resident | 'mandate' | 'associationName'; // Campo dinâmico
+  content?: string; // Texto estático
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  fontSize: number;
+  fontFamily: string;
+  color: string;
+  fontWeight: 'normal' | 'bold';
+  textAlign: 'left' | 'center' | 'right';
+  zIndex: number;
+}
+
+export interface CustomTemplate {
+  id: string;
+  name: string;
+  width: number;
+  height: number;
+  backgroundUrl: string | null;
+  elements: TemplateElement[];
+  createdAt: string;
 }

@@ -1,6 +1,6 @@
-import { Resident, SystemUser, AssociationData } from '@/types';
+import { Resident, SystemUser, AssociationData, CustomTemplate } from '@/types';
 
-// Detect API URL: Development (localhost:3001) vs Production (Relative /api)
+// Detect API URL
 const API_URL = window.location.hostname === 'localhost' 
     ? 'http://localhost:3001/api' 
     : '/api';
@@ -10,7 +10,8 @@ const STORAGE_KEYS = {
     RESIDENTS: 'sie_residents_db',
     USERS: 'sie_users_db',
     SETTINGS: 'sie_settings_db',
-    ROLES: 'sie_roles_db'
+    ROLES: 'sie_roles_db',
+    TEMPLATES: 'sie_templates_db'
 };
 
 // --- LOCAL STORAGE HELPERS ---
@@ -30,7 +31,7 @@ async function fetchWithFallback<T>(
 ): Promise<T> {
     try {
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 1500); // 1.5s timeout
+        const timeoutId = setTimeout(() => controller.abort(), 1500); 
 
         const res = await fetch(`${API_URL}${endpoint}`, {
             ...options,
@@ -176,6 +177,34 @@ export const api = {
                 roles.push(name);
                 localDB.set(STORAGE_KEYS.ROLES, roles);
             }
+        });
+    },
+
+    // --- Templates (NEW) ---
+    async getTemplates(): Promise<CustomTemplate[]> {
+        return fetchWithFallback('/templates', undefined, () => {
+            return localDB.get(STORAGE_KEYS.TEMPLATES);
+        });
+    },
+
+    async saveTemplate(template: CustomTemplate): Promise<void> {
+        return fetchWithFallback('/templates', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(template)
+        }, () => {
+            const list = localDB.get(STORAGE_KEYS.TEMPLATES) as CustomTemplate[];
+            const index = list.findIndex(t => t.id === template.id);
+            if (index >= 0) list[index] = template;
+            else list.push(template);
+            localDB.set(STORAGE_KEYS.TEMPLATES, list);
+        });
+    },
+
+    async deleteTemplate(id: string): Promise<void> {
+        return fetchWithFallback(`/templates/${id}`, { method: 'DELETE' }, () => {
+            const list = localDB.get(STORAGE_KEYS.TEMPLATES) as CustomTemplate[];
+            localDB.set(STORAGE_KEYS.TEMPLATES, list.filter(t => t.id !== id));
         });
     }
 };

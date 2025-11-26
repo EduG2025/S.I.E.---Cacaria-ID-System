@@ -1,9 +1,10 @@
 import React from 'react';
-import { Resident, IDTemplate, PhotoSettings, AssociationData } from '@/types';
+import { Resident, IDTemplate, PhotoSettings, AssociationData, CustomTemplate } from '@/types';
 
 interface IDCardProps {
   resident: Resident;
   template: IDTemplate;
+  customTemplateData?: CustomTemplate; // Dados do template personalizado
   photoSettings: PhotoSettings;
   organizationLogo: string | null;
   associationData?: AssociationData;
@@ -11,7 +12,7 @@ interface IDCardProps {
   onUpdate?: (field: keyof Resident, value: string) => void;
 }
 
-export const IDCard: React.FC<IDCardProps> = ({ resident, template, photoSettings, organizationLogo, associationData, idRef, onUpdate }) => {
+export const IDCard: React.FC<IDCardProps> = ({ resident, template, customTemplateData, photoSettings, organizationLogo, associationData, idRef, onUpdate }) => {
   
   // Use association data or defaults
   const assocName = associationData?.name || "Associação de Moradores";
@@ -97,6 +98,91 @@ export const IDCard: React.FC<IDCardProps> = ({ resident, template, photoSetting
         </div>
     );
   };
+
+  /* --- TEMPLATE 4: CUSTOM (DYNAMIC) --- */
+  if (template === 'CUSTOM' && customTemplateData) {
+      return (
+          <div 
+            ref={idRef} 
+            className="relative overflow-hidden shadow-2xl bg-white select-none print:shadow-none"
+            style={{ width: customTemplateData.width, height: customTemplateData.height }}
+          >
+              {/* Background */}
+              {customTemplateData.backgroundUrl && (
+                  <img src={customTemplateData.backgroundUrl} className="absolute inset-0 w-full h-full object-cover z-0" alt="bg" />
+              )}
+              
+              {!customTemplateData.backgroundUrl && <Watermark />}
+
+              {/* Elements */}
+              {customTemplateData.elements.map(el => {
+                  if (el.type === 'photo') {
+                      return (
+                          <div 
+                            key={el.id} 
+                            style={{ left: el.x, top: el.y, width: el.width, height: el.height }}
+                            className="absolute z-10 overflow-hidden bg-gray-200 border border-gray-400"
+                          >
+                              {renderPhoto()}
+                          </div>
+                      );
+                  }
+
+                  // Handle Text or Fields
+                  let content = el.content;
+                  if (el.type === 'field' && el.field) {
+                      // Map fields
+                      if (el.field === 'mandate') content = mandateText;
+                      else if (el.field === 'associationName') content = assocName;
+                      else {
+                          // Editable Resident Fields
+                          const value = resident[el.field as keyof Resident] || '';
+                          return (
+                              <input
+                                key={el.id}
+                                value={value}
+                                onChange={(e) => handleChange(el.field as keyof Resident, e)}
+                                style={{
+                                    left: el.x, 
+                                    top: el.y, 
+                                    width: el.width,
+                                    fontSize: el.fontSize,
+                                    fontFamily: el.fontFamily,
+                                    color: el.color,
+                                    fontWeight: el.fontWeight,
+                                    textAlign: el.textAlign,
+                                    zIndex: el.zIndex
+                                }}
+                                className="absolute bg-transparent border-none outline-none focus:bg-white/30"
+                              />
+                          );
+                      }
+                  }
+
+                  // Static Text
+                  return (
+                      <div
+                        key={el.id}
+                        style={{
+                            left: el.x, 
+                            top: el.y, 
+                            width: el.width,
+                            fontSize: el.fontSize,
+                            fontFamily: el.fontFamily,
+                            color: el.color,
+                            fontWeight: el.fontWeight,
+                            textAlign: el.textAlign,
+                            zIndex: el.zIndex
+                        }}
+                        className="absolute whitespace-pre-wrap"
+                      >
+                          {content}
+                      </div>
+                  );
+              })}
+          </div>
+      );
+  }
 
   /* --- TEMPLATE 1: CLASSIC (Original Green) --- */
   if (template === 'CLASSIC') {

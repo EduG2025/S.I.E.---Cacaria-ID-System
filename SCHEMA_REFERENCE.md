@@ -1,77 +1,107 @@
-# Schema do Banco de Dados (MySQL)
+# 🗄️ Schema do Banco de Dados (MySQL) - S.I.E. Cacaria
 
-Este documento serve como referência para a estrutura do banco de dados utilizada pelo **S.I.E. - Sistema de Investigação Estratégica**.
+Este documento contém a definição oficial da estrutura do banco de dados. Use este script para criar ou restaurar o banco de dados no servidor VPS.
 
-Para instalar, você pode copiar o código abaixo e executar no seu cliente MySQL ou importar o arquivo `schema.sql`.
+## 📋 Informações de Conexão (Produção)
+*   **Database:** `siecacaria`
+*   **User:** `siecacaria`
+*   **Host:** `127.0.0.1`
+
+---
+
+## 🚀 Script SQL Completo
+
+Copie e execute o código abaixo no seu cliente MySQL (Workbench, DBeaver ou Terminal):
 
 ```sql
-CREATE DATABASE IF NOT EXISTS sie_cacaria_db;
-USE sie_cacaria_db;
+-- 1. Criação e Seleção do Banco
+CREATE DATABASE IF NOT EXISTS siecacaria;
+USE siecacaria;
 
 -- --------------------------------------------------------
--- Tabela de Moradores (Residents)
--- Armazena os dados cadastrais e a foto em Base64
+-- Tabela: residents (Moradores)
+-- Armazena dados pessoais e foto de perfil
 -- --------------------------------------------------------
 CREATE TABLE IF NOT EXISTS residents (
-    id VARCHAR(50) PRIMARY KEY,
-    name VARCHAR(255),
+    id VARCHAR(36) PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
     role VARCHAR(100),
     cpf VARCHAR(20),
     rg VARCHAR(20),
     address TEXT,
     birth_date VARCHAR(20),
     registration_date VARCHAR(20),
-    photo_url LONGTEXT, -- LONGTEXT é essencial para armazenar imagens Base64 grandes
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
+    photo_url LONGTEXT, -- Armazena Base64 (pode ser grande)
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_name (name),
+    INDEX idx_cpf (cpf)
+) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
 -- --------------------------------------------------------
--- Tabela de Usuários do Sistema (Auth)
--- Controle de acesso para Admins e Operadores
+-- Tabela: system_users (Autenticação)
+-- Usuários que podem acessar o sistema administrativo
 -- --------------------------------------------------------
 CREATE TABLE IF NOT EXISTS system_users (
-    id VARCHAR(50) PRIMARY KEY,
-    name VARCHAR(255),
+    id VARCHAR(36) PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
     username VARCHAR(50) UNIQUE NOT NULL,
-    password VARCHAR(255) NOT NULL, -- Nota: Em produção real, recomenda-se hash
+    password VARCHAR(255) NOT NULL, -- Em produção, usar hash (bcrypt)
     role ENUM('ADMIN', 'OPERADOR') DEFAULT 'OPERADOR',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
+) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
 -- --------------------------------------------------------
--- Tabela de Configurações da Associação
--- Tabela Singleton (sempre ID=1) para guardar configurações globais
+-- Tabela: association_settings (Configuração Global)
+-- Armazena dados da associação (CNPJ, Endereço, Diretoria) e Logo
 -- --------------------------------------------------------
 CREATE TABLE IF NOT EXISTS association_settings (
-    id INT PRIMARY KEY, -- Sempre será 1
-    data JSON, -- Armazena toda a estrutura hierárquica (diretoria, endereço, contatos)
-    logo_base64 LONGTEXT, -- Logo oficial da associação
+    id INT PRIMARY KEY, -- Sempre 1
+    data JSON, -- JSON estruturado com endereço, contatos e diretoria
+    logo_base64 LONGTEXT, -- Logo oficial em alta resolução
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-);
+) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
 -- --------------------------------------------------------
--- Tabela de Cargos (Roles)
--- Usada para popular o autocomplete do formulário
+-- Tabela: roles (Cargos Dinâmicos)
+-- Lista para o autocomplete do formulário
 -- --------------------------------------------------------
 CREATE TABLE IF NOT EXISTS roles (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    name VARCHAR(100) UNIQUE NOT NULL
-);
+    name VARCHAR(100) PRIMARY KEY
+) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
 -- --------------------------------------------------------
--- DADOS INICIAIS (SEEDS)
+-- Tabela: id_card_templates (Templates Personalizados)
+-- Layouts criados pelo Editor Visual
+-- --------------------------------------------------------
+CREATE TABLE IF NOT EXISTS id_card_templates (
+    id VARCHAR(36) PRIMARY KEY,
+    name VARCHAR(100) NOT NULL,
+    background_url LONGTEXT,
+    elements JSON, -- Array de elementos visuais (x, y, cor, fonte)
+    width INT DEFAULT 350,
+    height INT DEFAULT 220,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+
+-- --------------------------------------------------------
+-- SEEDS (Dados Iniciais)
 -- --------------------------------------------------------
 
--- 1. Usuário Admin Padrão (Login: admin / Senha: admin)
+-- 1. Usuário Admin Padrão
+-- Login: admin
+-- Senha: admin
 INSERT IGNORE INTO system_users (id, name, username, password, role) 
 VALUES ('1', 'Administrador', 'admin', 'admin', 'ADMIN');
 
--- 2. Cargos Padrão do Sistema
+-- 2. Cargos Iniciais
 INSERT IGNORE INTO roles (name) VALUES 
 ('Morador'), 
 ('Presidente'), 
 ('Vice-Presidente'), 
 ('Tesoureiro'), 
 ('Secretário'), 
-('Diretor');
+('Diretor'),
+('Conselheiro');
+
 ```

@@ -1,143 +1,107 @@
-# Guia de Instalação: S.I.E. Cacaria (VPS + MySQL)
+# 🚀 Guia de Implantação VPS - S.I.E. Cacaria
 
-Este guia descreve o processo passo a passo para implantar o Sistema de Investigação Estratégica (Módulo Cacaria) no seu servidor VPS.
+Este guia cobre a instalação, configuração e manutenção do sistema no servidor Linux (Ubuntu/Debian).
 
-## Pré-requisitos
-*   Servidor VPS configurado.
-*   Acesso SSH.
-*   Caminho de instalação: `/home/jennyai-admcacaria/htdocs/admcacaria.jennyai.space`
+## 📍 Informações do Ambiente
+*   **Diretório Raiz:** `/home/jennyai-admcacaria/htdocs/admcacaria.jennyai.space`
+*   **Porta da Aplicação:** `3001`
+*   **Banco de Dados:** MySQL (`siecacaria`)
 
 ---
 
-## Passo 1: Preparação do Ambiente (Sistema Operacional)
+## 1. Instalação Inicial
 
-Atualize os pacotes do servidor:
+### Passo 1.1: Clonar Repositório
 ```bash
-sudo apt update && sudo apt upgrade -y
+cd /home/jennyai-admcacaria/htdocs/admcacaria.jennyai.space
+git clone https://github.com/EduG2025/S.I.E.---Cacaria-ID-System.git .
 ```
 
-Instale as dependências básicas:
+### Passo 1.2: Configurar Dependências
+Instale as bibliotecas do Node.js:
 ```bash
-sudo apt install curl git build-essential -y
+npm install
+```
+
+### Passo 1.3: Configurar Ambiente (.env)
+Crie o arquivo `.env`:
+```bash
+nano .env
+```
+Cole o conteúdo abaixo (ajuste a API KEY se necessário):
+```env
+PORT=3001
+DB_HOST=127.0.0.1
+DB_USER=siecacaria
+DB_PASSWORD=Gegerminal180!
+DB_NAME=siecacaria
+API_KEY=AIzaSyAd62vmCl_Y7XkzTz-nSquW-teO230KK_g
+```
+
+### Passo 1.4: Configurar Banco de Dados
+```bash
+# Entre no MySQL
+mysql -u root -p
+
+# Execute os comandos:
+CREATE DATABASE IF NOT EXISTS siecacaria;
+CREATE USER IF NOT EXISTS 'siecacaria'@'127.0.0.1' IDENTIFIED BY 'Gegerminal180!';
+GRANT ALL PRIVILEGES ON siecacaria.* TO 'siecacaria'@'127.0.0.1';
+FLUSH PRIVILEGES;
+EXIT;
+```
+*O sistema criará as tabelas automaticamente na primeira execução.*
+
+### Passo 1.5: Build e Execução
+```bash
+# Compilar o Frontend
+npm run build
+
+# Iniciar o Servidor (usando PM2 para manter online)
+pm2 start ecosystem.config.cjs
+pm2 save
+pm2 startup
 ```
 
 ---
 
-## Passo 2: Instalar e Configurar o MySQL
+## 2. Atualização do Sistema (Deploy Contínuo)
 
-1.  Instale o servidor MySQL:
-    ```bash
-    sudo apt install mysql-server -y
-    ```
+Sempre que houver atualizações no GitHub, siga estes passos para atualizar o servidor:
 
-2.  Acesse o shell do MySQL:
-    ```bash
-    sudo mysql -u root -p
-    ```
+```bash
+cd /home/jennyai-admcacaria/htdocs/admcacaria.jennyai.space
 
-3.  Crie o banco de dados e usuário (Atualizado para **siecacaria**):
-    ```sql
-    CREATE DATABASE siecacaria;
-    CREATE USER 'siecacaria'@'localhost' IDENTIFIED BY 'SuaSenhaForteAqui';
-    GRANT ALL PRIVILEGES ON siecacaria.* TO 'siecacaria'@'localhost';
-    FLUSH PRIVILEGES;
-    EXIT;
-    ```
+# 1. Baixar código novo
+git pull origin main
 
-4.  Importe o schema inicial (após clonar o projeto no Passo 4):
-    ```bash
-    mysql -u siecacaria -p siecacaria < schema.sql
-    ```
+# 2. Atualizar dependências (caso tenha mudado algo)
+npm install
 
----
+# 3. Recompilar o Frontend (Obrigatório)
+npm run build
 
-## Passo 3: Instalar Node.js e PM2
-
-1.  Instale o Node.js (versão 18 LTS ou 20):
-    ```bash
-    curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
-    sudo apt install -y nodejs
-    ```
-
-2.  Instale o PM2 (Gerenciador de Processos):
-    ```bash
-    sudo npm install -g pm2
-    ```
-
----
-
-## Passo 4: Instalação da Aplicação
-
-1.  Navegue até a pasta do seu site e clone o repositório:
-    ```bash
-    cd /home/jennyai-admcacaria/htdocs/admcacaria.jennyai.space
-    
-    # Se a pasta não estiver vazia, mova arquivos temporariamente ou use '.' no final
-    git clone https://github.com/EduG2025/S.I.E.---Cacaria-ID-System.git .
-    ```
-
-2.  Instale as dependências:
-    ```bash
-    npm install
-    ```
-
-3.  Configure as variáveis de ambiente:
-    Crie ou edite o arquivo `.env`:
-    ```bash
-    nano .env
-    ```
-    **Conteúdo Atualizado:**
-    ```env
-    PORT=3001
-    DB_HOST=localhost
-    DB_USER=siecacaria
-    DB_PASSWORD=SuaSenhaForteAqui
-    DB_NAME=siecacaria
-    API_KEY=SUA_CHAVE_GOOGLE_GEMINI
-    ```
-
-4.  Build do Frontend (React):
-    ```bash
-    npm run build
-    ```
-
----
-
-## Passo 5: Configurar o Nginx
-
-Edite o arquivo de configuração do seu site no Nginx (geralmente em `/etc/nginx/conf.d/` ou gerenciado pelo painel):
-
-```nginx
-server {
-    listen 80;
-    server_name admcacaria.jennyai.space;
-
-    # Backend API Proxy
-    location / {
-        proxy_pass http://127.0.0.1:3001;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection 'upgrade';
-        proxy_set_header Host $host;
-        proxy_cache_bypass $http_upgrade;
-        client_max_body_size 50M;
-    }
-}
+# 4. Reiniciar o Servidor
+pm2 restart sie-backend
 ```
 
 ---
 
-## Passo 6: Iniciar o Backend
+## 3. Resolução de Problemas (Troubleshooting)
 
-1.  Inicie o servidor com PM2:
-    ```bash
-    pm2 start ecosystem.config.cjs
-    ```
+### Erro 502 Bad Gateway
+O Nginx não consegue falar com o Node.js.
+1. Verifique se o servidor está rodando: `pm2 status`
+2. Veja os logs de erro: `pm2 logs sie-backend`
+3. Reinicie o serviço: `pm2 restart all`
 
-2.  Salvar configuração para reiniciar no boot:
-    ```bash
-    pm2 save
-    pm2 startup
-    ```
+### Erro de Permissão (EACCES)
+Garanta que o usuário do servidor web tenha acesso aos arquivos:
+```bash
+sudo chown -R $USER:www-data .
+sudo chmod -R 755 .
+```
 
-O sistema estará acessível em `https://admcacaria.jennyai.space`.
+### Banco de Dados não conecta
+1. Verifique o `.env`.
+2. Teste a conexão manual: `mysql -u siecacaria -h 127.0.0.1 -p`

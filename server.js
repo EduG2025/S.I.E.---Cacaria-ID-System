@@ -28,10 +28,11 @@ app.get('/health', (req, res) => {
 app.use(express.static(path.join(__dirname, 'dist')));
 
 // Pool de conexão MySQL
+// Atualizado com os padrões de produção solicitados
 const pool = mysql.createPool({
-    host: process.env.DB_HOST || 'localhost',
+    host: process.env.DB_HOST || '127.0.0.1',
     user: process.env.DB_USER || 'siecacaria',
-    password: process.env.DB_PASSWORD || '',
+    password: process.env.DB_PASSWORD || 'Gegerminal180!',
     database: process.env.DB_NAME || 'siecacaria',
     waitForConnections: true,
     connectionLimit: 10,
@@ -89,6 +90,19 @@ const initDB = async () => {
         await connection.query(`
             CREATE TABLE IF NOT EXISTS roles (
                 name VARCHAR(100) PRIMARY KEY
+            ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+        `);
+
+        // 5. Custom Templates Table
+        await connection.query(`
+            CREATE TABLE IF NOT EXISTS id_card_templates (
+                id VARCHAR(36) PRIMARY KEY,
+                name VARCHAR(100) NOT NULL,
+                background_url LONGTEXT,
+                elements JSON,
+                width INT DEFAULT 350,
+                height INT DEFAULT 220,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
         `);
 
@@ -259,7 +273,51 @@ app.post('/api/roles', async (req, res) => {
     }
 });
 
-// Fallback para React Router (Serve index.html para qualquer rota não-API)
+// 6. Templates (NEW)
+app.get('/api/templates', async (req, res) => {
+    try {
+        const [rows] = await pool.query('SELECT * FROM id_card_templates ORDER BY created_at DESC');
+        res.json(rows.map(t => ({
+            id: t.id,
+            name: t.name,
+            backgroundUrl: t.background_url,
+            elements: t.elements, // MySQL JSON type is auto parsed by driver usually, if not we parse
+            width: t.width,
+            height: t.height,
+            createdAt: t.created_at
+        })));
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.post('/api/templates', async (req, res) => {
+    const t = req.body;
+    try {
+        await pool.query(
+            `INSERT INTO id_card_templates (id, name, background_url, elements, width, height) 
+             VALUES (?, ?, ?, ?, ?, ?) 
+             ON DUPLICATE KEY UPDATE name=?, background_url=?, elements=?, width=?, height=?`,
+            [t.id, t.name, t.backgroundUrl, JSON.stringify(t.elements), t.width, t.height,
+             t.name, t.backgroundUrl, JSON.stringify(t.elements), t.width, t.height]
+        );
+        res.json({ success: true });
+    } catch (err) {
+        console.log(err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.delete('/api/templates/:id', async (req, res) => {
+    try {
+        await pool.query('DELETE FROM id_card_templates WHERE id = ?', [req.params.id]);
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Fallback para React Router
 app.get('*', (req, res) => {
     res.sendFile(path.join(__dirname, 'dist', 'index.html'));
 });
