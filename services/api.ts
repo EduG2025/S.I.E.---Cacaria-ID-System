@@ -1,4 +1,3 @@
-
 import { Resident, SystemUser, AssociationData, CustomTemplate, ApiKey } from '@/types';
 
 // Detect API URL
@@ -36,7 +35,7 @@ const localDB = {
     },
 };
 
-interface SaveResult {
+export interface SaveResult {
     success: boolean;
     offline: boolean;
 }
@@ -247,7 +246,8 @@ export const api = {
         });
     },
 
-    async addApiKey(keyData: ApiKey): Promise<void> {
+    async addApiKey(keyData: ApiKey): Promise<SaveResult> {
+        // @ts-ignore
         return fetchWithFallback('/keys', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -259,7 +259,8 @@ export const api = {
             }
             keys.push(keyData);
             localDB.set(STORAGE_KEYS.API_KEYS, keys);
-        });
+            return { success: true };
+        }).then(res => ({ success: true, offline: !!res._offline }));
     },
 
     async updateApiKeyStatus(id: string, isActive: boolean): Promise<void> {

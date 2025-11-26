@@ -1,8 +1,7 @@
-
 import React, { useState, useRef, useEffect } from 'react';
 import { Sparkles, Upload, FileText, Download, ShieldCheck, User as UserIcon, Settings, Lock, LayoutTemplate, Image as ImageIcon, FileImage, BarChart3, Users, Search, Plus, Save, X, Building, Wifi, WifiOff, LogOut, Palette, Camera, Video, MessageSquare, Info, Menu, Fingerprint, Wand2 } from 'lucide-react';
 import { Resident, ProcessingStatus, AppView, IDTemplate, PhotoSettings, User, SystemUser, AssociationData, CustomTemplate } from '@/types';
-import { analyzeDocumentText, editResidentPhoto, fetchCompanyData, generatePlaceholderAvatar, deepAnalyzeDocument } from '@/services/geminiService';
+import { analyzeDocumentText, editResidentPhoto, fetchCompanyData, generatePlaceholderAvatar, deepAnalyzeDocument, validateApiKey } from '@/services/geminiService';
 import { api } from '@/services/api'; 
 import { IDCard } from '@/components/IDCard';
 import { TemplateEditor } from '@/components/TemplateEditor';
@@ -35,6 +34,7 @@ const App: React.FC = () => {
   
   // --- Connection State ---
   const [isBackendConnected, setIsBackendConnected] = useState<boolean>(false);
+  const [isAiReady, setIsAiReady] = useState<boolean>(false);
 
   // --- App State ---
   const [view, setView] = useState<AppView>(AppView.LOGIN);
@@ -53,7 +53,7 @@ const App: React.FC = () => {
   const [systemUsers, setSystemUsers] = useState<SystemUser[]>([]);
   
   // Lista padrão de cargos solicitada - COMPLETA
-  const defaultRoles = ['Morador', 'Presidente', 'Vice-Presidente', 'Tesoureiro', 'Secretário', 'Diretor'];
+  const defaultRoles = ['Morador', 'Presidente', 'Vice-Presidente', 'Tesoureiro', 'Secretário', 'Diretor', 'Sócio Benemérito'];
   const [availableRoles, setAvailableRoles] = useState<string[]>(defaultRoles);
   
   const [organizationLogo, setOrganizationLogo] = useState<string | null>(null);
@@ -89,7 +89,17 @@ const App: React.FC = () => {
     };
     checkConnection();
 
-    // 2. Restore Session
+    // 2. Check AI Capability
+    const checkAi = async () => {
+        const key = await api.getActiveApiKey();
+        if(key) {
+            const valid = await validateApiKey(key);
+            setIsAiReady(valid);
+        }
+    };
+    checkAi();
+
+    // 3. Restore Session
     const savedSession = localStorage.getItem('sie_session');
     if (savedSession) {
         try {
@@ -489,17 +499,94 @@ const App: React.FC = () => {
       }
   }
 
-  const handlePrint = () => window.print();
+  const handlePrint = async () => {
+      if (!idCardRef.current) return;
+      
+      try {
+          // Use the clean image generator
+          const canvas = await getCleanImage();
+          if(!canvas) return;
+
+          const imgData = canvas.toDataURL('image/png');
+          
+          // Open print window
+          const printWindow = window.open('', '_blank', 'width=800,height=600');
+          if (printWindow) {
+              printWindow.document.write(`
+                  <html>
+                      <head>
+                          <title>Imprimir Carteirinha - S.I.E.</title>
+                          <style>
+                              body { margin: 0; display: flex; justify-content: center; align-items: center; height: 100vh; background: #f0f0f0; }
+                              img { max-width: 100%; height: auto; box-shadow: 0 0 15px rgba(0,0,0,0.2); }
+                              @media print { body { background: white; display: block; } img { box-shadow: none; } }
+                          </style>
+                      </head>
+                      <body>
+                          <img src="${imgData}" onload="window.print();" />
+                      </body>
+                  </html>
+              `);
+              printWindow.document.close();
+          }
+      } catch (e) {
+          console.error("Erro na impressão", e);
+          alert("Erro ao preparar impressão.");
+      }
+  };
+
+  const getCleanImage = async () => {
+      if (!idCardRef.current) return null;
+      
+      return html2canvas(idCardRef.current, { 
+          scale: 3, 
+          backgroundColor: '#ffffff', 
+          useCORS: true,
+          logging: false,
+          onclone: (clonedDoc) => {
+              const inputs = clonedDoc.querySelectorAll('input');
+              inputs.forEach((input) => {
+                  const value = input.value;
+                  const span = clonedDoc.createElement('div');
+                  span.textContent = value;
+                  
+                  const style = window.getComputedStyle(input);
+                  span.style.font = style.font;
+                  span.style.fontFamily = style.fontFamily;
+                  span.style.fontSize = style.fontSize;
+                  span.style.fontWeight = style.fontWeight;
+                  span.style.letterSpacing = style.letterSpacing;
+                  span.style.textTransform = style.textTransform;
+                  span.style.color = style.color;
+                  span.style.textAlign = style.textAlign;
+                  span.style.backgroundColor = 'transparent';
+                  span.style.border = 'none';
+                  
+                  span.style.position = style.position;
+                  span.style.left = style.left;
+                  span.style.top = style.top;
+                  span.style.width = style.width;
+                  span.style.height = style.height;
+                  span.style.display = 'flex';
+                  span.style.alignItems = 'center';
+                  
+                  if (style.textAlign === 'right') span.style.justifyContent = 'flex-end';
+                  else if (style.textAlign === 'center') span.style.justifyContent = 'center';
+                  else span.style.justifyContent = 'flex-start';
+
+                  input.style.display = 'none';
+                  input.parentNode?.insertBefore(span, input);
+              });
+          }
+      });
+  };
 
   const handleDownloadJPG = async () => {
       if (!idCardRef.current) return;
       try {
-          const canvas = await html2canvas(idCardRef.current, { 
-              scale: 3, 
-              backgroundColor: '#ffffff', // Force white background for JPG
-              useCORS: true,
-              logging: false 
-          });
+          const canvas = await getCleanImage();
+          if(!canvas) return;
+
           const image = canvas.toDataURL("image/jpeg", 1.0);
           const link = document.createElement("a");
           link.href = image;
@@ -662,11 +749,19 @@ const App: React.FC = () => {
           <div className="mt-2">
             <p className="text-xs text-white font-medium">{currentUser?.name}</p>
             <p className="text-[10px] text-brand-accent opacity-80 uppercase tracking-wider">{currentUser?.role === 'ADMIN' ? 'Administrador' : 'Operador'}</p>
-            <div className="flex items-center gap-1 mt-1">
-                {isBackendConnected ? <Wifi size={10} className="text-green-500"/> : <WifiOff size={10} className="text-orange-500"/>}
-                <span className={`text-[9px] font-mono ${isBackendConnected ? 'text-green-600' : 'text-orange-500'}`}>
-                    {isBackendConnected ? 'Online' : 'Offline'}
-                </span>
+            <div className="flex flex-col gap-1 mt-1">
+                <div className="flex items-center gap-1">
+                    {isBackendConnected ? <Wifi size={10} className="text-green-500"/> : <WifiOff size={10} className="text-orange-500"/>}
+                    <span className={`text-[9px] font-mono ${isBackendConnected ? 'text-green-600' : 'text-orange-500'}`}>
+                        {isBackendConnected ? 'DB Online' : 'DB Offline'}
+                    </span>
+                </div>
+                <div className="flex items-center gap-1">
+                    <Sparkles size={10} className={isAiReady ? "text-purple-500" : "text-gray-500"}/>
+                    <span className={`text-[9px] font-mono ${isAiReady ? 'text-purple-400' : 'text-gray-500'}`}>
+                        {isAiReady ? 'IA Pronta' : 'IA Inativa'}
+                    </span>
+                </div>
             </div>
           </div>
         </div>
@@ -728,7 +823,9 @@ const App: React.FC = () => {
                     {view === AppView.DASHBOARD && 'Dashboard Geral'}
                 </h2>
                 <Tooltip text="Mecanismo de IA Google Gemini operando">
-                    <span className="text-xs bg-green-900/30 px-3 py-1 rounded-full border border-green-500/30 text-green-400 font-mono">Sistema Inteligente Ativo</span>
+                    <span className={`text-xs px-3 py-1 rounded-full border font-mono flex items-center gap-2 ${isAiReady ? 'bg-green-900/30 border-green-500/30 text-green-400' : 'bg-red-900/30 border-red-500/30 text-red-400'}`}>
+                        <Sparkles size={10}/> {isAiReady ? 'Sistema Inteligente Ativo' : 'IA Indisponível'}
+                    </span>
                 </Tooltip>
              </header>
         )}
@@ -757,6 +854,7 @@ const App: React.FC = () => {
                 onEdit={handleEditResident}
                 onDelete={handleDeleteResident}
                 onNew={handleNewResident}
+                availableRoles={availableRoles}
             />
         )}
 
@@ -884,8 +982,9 @@ const App: React.FC = () => {
                         </h3>
 
                         <Tooltip text="A carteirinha é interativa! Clique nos textos para editar">
-                            <div className="w-full overflow-x-auto flex justify-center py-2 px-1">
-                                <div className="transform hover:scale-[1.02] transition-transform duration-300 shadow-2xl shadow-black/50 rounded-xl cursor-text shrink-0">
+                            {/* Visual Backdrop to make ID card pop */}
+                            <div className="w-full overflow-x-auto flex justify-center py-8 px-4 bg-brand-primary/50 rounded-xl border border-gray-700/50">
+                                <div className="transform hover:scale-[1.01] transition-transform duration-300 shadow-[0_20px_50px_rgba(0,0,0,0.5)] rounded-xl cursor-text shrink-0 relative">
                                     <IDCard 
                                         resident={resident} 
                                         template={template} 
@@ -938,7 +1037,7 @@ const App: React.FC = () => {
 
                          {/* Actions */}
                         <div className="mt-6 flex flex-col sm:flex-row gap-3 w-full max-w-md">
-                            <Tooltip text="Imprimir via navegador">
+                            <Tooltip text="Imprimir documento limpo">
                                 <button onClick={handlePrint} className="flex-1 bg-white hover:bg-gray-100 text-brand-dark font-bold py-2.5 rounded-lg flex items-center justify-center gap-2 shadow-lg transition-all text-sm">
                                     <Download size={16} /> Imprimir
                                 </button>
@@ -959,172 +1058,132 @@ const App: React.FC = () => {
                             </h3>
                             <div className="flex bg-brand-primary rounded-lg p-1 gap-1">
                                 <button onClick={() => setStudioMode('UPLOAD')} className={`p-1.5 rounded ${studioMode === 'UPLOAD' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'}`} title="Upload/Câmera"><Upload size={14}/></button>
-                                <button onClick={() => setStudioMode('GENERATE')} className={`p-1.5 rounded ${studioMode === 'GENERATE' ? 'bg-purple-700 text-white' : 'text-gray-400 hover:text-white'}`} title="Gerar Avatar"><Wand2 size={14}/></button>
                             </div>
                         </div>
 
-                        {studioMode === 'UPLOAD' ? (
-                            <div className="flex flex-col md:flex-row gap-6">
-                                {/* Upload Area / Camera */}
-                                <div className="flex-1">
-                                    {!uploadedPhotoBase64 && !isCameraOpen ? (
-                                        <div className="h-48 w-full flex gap-2">
-                                            <label className="flex-1 border-2 border-dashed border-gray-600 hover:border-brand-accent rounded-xl flex flex-col items-center justify-center cursor-pointer transition-colors bg-brand-primary/30">
-                                                <Upload className="text-gray-500 mb-2" size={32} />
-                                                <span className="text-xs text-gray-400 font-bold uppercase text-center">Carregar Foto</span>
-                                                <input type="file" accept="image/*" onChange={handlePhotoUpload} className="hidden" />
-                                            </label>
-                                            <button onClick={handleStartCamera} className="w-20 border-2 border-dashed border-gray-600 hover:border-brand-accent rounded-xl flex flex-col items-center justify-center cursor-pointer transition-colors bg-brand-primary/30">
-                                                <Camera className="text-gray-500 mb-2" size={24} />
-                                                <span className="text-[10px] text-gray-400 font-bold uppercase text-center">Câmera</span>
+                        <div className="flex flex-col md:flex-row gap-6">
+                            {/* Upload Area / Camera */}
+                            <div className="flex-1">
+                                {!uploadedPhotoBase64 && !isCameraOpen ? (
+                                    <div className="h-48 w-full flex gap-2">
+                                        <label className="flex-1 border-2 border-dashed border-gray-600 hover:border-brand-accent rounded-xl flex flex-col items-center justify-center cursor-pointer transition-colors bg-brand-primary/30">
+                                            <Upload className="text-gray-500 mb-2" size={32} />
+                                            <span className="text-xs text-gray-400 font-bold uppercase text-center">Carregar Foto</span>
+                                            <input type="file" accept="image/*" onChange={handlePhotoUpload} className="hidden" />
+                                        </label>
+                                        <button onClick={handleStartCamera} className="w-20 border-2 border-dashed border-gray-600 hover:border-brand-accent rounded-xl flex flex-col items-center justify-center cursor-pointer transition-colors bg-brand-primary/30">
+                                            <Camera className="text-gray-500 mb-2" size={24} />
+                                            <span className="text-[10px] text-gray-400 font-bold uppercase text-center">Câmera</span>
+                                        </button>
+                                    </div>
+                                ) : isCameraOpen ? (
+                                        <div className="relative h-48 w-full bg-black rounded-xl overflow-hidden border border-gray-700 flex flex-col items-center justify-center">
+                                        <video ref={videoRef} autoPlay playsInline className="w-full h-full object-cover" />
+                                        <div className="absolute bottom-2 flex gap-2">
+                                            <button onClick={handleCapturePhoto} className="bg-white text-black px-4 py-1 rounded-full text-xs font-bold shadow-lg hover:bg-gray-200">
+                                                Capturar
+                                            </button>
+                                            <button onClick={handleStopCamera} className="bg-red-600 text-white px-3 py-1 rounded-full text-xs font-bold shadow-lg hover:bg-red-500">
+                                                Cancelar
                                             </button>
                                         </div>
-                                    ) : isCameraOpen ? (
-                                         <div className="relative h-48 w-full bg-black rounded-xl overflow-hidden border border-gray-700 flex flex-col items-center justify-center">
-                                            <video ref={videoRef} autoPlay playsInline className="w-full h-full object-cover" />
-                                            <div className="absolute bottom-2 flex gap-2">
-                                                <button onClick={handleCapturePhoto} className="bg-white text-black px-4 py-1 rounded-full text-xs font-bold shadow-lg hover:bg-gray-200">
-                                                    Capturar
-                                                </button>
-                                                <button onClick={handleStopCamera} className="bg-red-600 text-white px-3 py-1 rounded-full text-xs font-bold shadow-lg hover:bg-red-500">
-                                                    Cancelar
-                                                </button>
-                                            </div>
-                                         </div>
-                                    ) : (
-                                        <div className="relative h-48 w-full bg-black rounded-xl overflow-hidden border border-gray-700 group">
-                                            <img src={`data:${uploadedPhotoMimeType};base64,${uploadedPhotoBase64}`} className="w-full h-full object-contain" alt="Upload" />
-                                            <button 
-                                                onClick={() => setUploadedPhotoBase64(null)} 
-                                                className="absolute top-2 right-2 bg-black/50 hover:bg-red-500 text-white p-1.5 rounded-full backdrop-blur-sm transition-colors"
-                                            >
-                                                <X size={14} />
-                                            </button>
                                         </div>
-                                    )}
-                                </div>
+                                ) : (
+                                    <div className="relative h-48 w-full bg-black rounded-xl overflow-hidden border border-gray-700 group">
+                                        <img src={`data:${uploadedPhotoMimeType};base64,${uploadedPhotoBase64}`} className="w-full h-full object-contain" alt="Upload" />
+                                        <button 
+                                            onClick={() => setUploadedPhotoBase64(null)} 
+                                            className="absolute top-2 right-2 bg-black/50 hover:bg-red-500 text-white p-1.5 rounded-full backdrop-blur-sm transition-colors"
+                                        >
+                                            <X size={14} />
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
 
-                                {/* Controls */}
-                                <div className="flex-1 space-y-4">
-                                    <div className="bg-brand-primary/50 p-4 rounded-lg border border-gray-700">
-                                        <p className="text-[10px] text-gray-400 uppercase font-bold mb-3">Ajustes Manuais</p>
+                            {/* Controls */}
+                            <div className="flex-1 space-y-4">
+                                <div className="bg-brand-primary/50 p-4 rounded-lg border border-gray-700">
+                                    <p className="text-[10px] text-gray-400 uppercase font-bold mb-3">Ajustes Manuais</p>
+                                    
+                                    <div className="space-y-3">
+                                        <div>
+                                            <div className="flex justify-between text-[10px] text-gray-500 mb-1">
+                                                <span>Zoom</span>
+                                                <span>{photoSettings.zoom.toFixed(1)}x</span>
+                                            </div>
+                                            <input 
+                                                type="range" min="0.5" max="3" step="0.1" 
+                                                value={photoSettings.zoom} 
+                                                onChange={e => setPhotoSettings({...photoSettings, zoom: parseFloat(e.target.value)})}
+                                                className="w-full h-1.5 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-brand-accent"
+                                            />
+                                        </div>
                                         
-                                        <div className="space-y-3">
+                                        <div className="grid grid-cols-2 gap-3">
                                             <div>
-                                                <div className="flex justify-between text-[10px] text-gray-500 mb-1">
-                                                    <span>Zoom</span>
-                                                    <span>{photoSettings.zoom.toFixed(1)}x</span>
-                                                </div>
+                                                <label className="text-[10px] text-gray-500 block mb-1">Posição X</label>
                                                 <input 
-                                                    type="range" min="0.5" max="3" step="0.1" 
-                                                    value={photoSettings.zoom} 
-                                                    onChange={e => setPhotoSettings({...photoSettings, zoom: parseFloat(e.target.value)})}
-                                                    className="w-full h-1.5 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-brand-accent"
+                                                    type="number" 
+                                                    value={photoSettings.x} 
+                                                    onChange={e => setPhotoSettings({...photoSettings, x: parseInt(e.target.value)})}
+                                                    className="w-full bg-brand-primary border border-gray-600 rounded p-1 text-xs text-white"
                                                 />
                                             </div>
-                                            
-                                            <div className="grid grid-cols-2 gap-3">
-                                                <div>
-                                                    <label className="text-[10px] text-gray-500 block mb-1">Posição X</label>
-                                                    <input 
-                                                        type="number" 
-                                                        value={photoSettings.x} 
-                                                        onChange={e => setPhotoSettings({...photoSettings, x: parseInt(e.target.value)})}
-                                                        className="w-full bg-brand-primary border border-gray-600 rounded p-1 text-xs text-white"
-                                                    />
-                                                </div>
-                                                <div>
-                                                    <label className="text-[10px] text-gray-500 block mb-1">Posição Y</label>
-                                                    <input 
-                                                        type="number" 
-                                                        value={photoSettings.y} 
-                                                        onChange={e => setPhotoSettings({...photoSettings, y: parseInt(e.target.value)})}
-                                                        className="w-full bg-brand-primary border border-gray-600 rounded p-1 text-xs text-white"
-                                                    />
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    {uploadedPhotoBase64 && (
-                                        <div className="space-y-3">
-                                            <div className="bg-brand-primary/30 p-3 rounded border border-gray-600/50">
-                                                <p className="text-[10px] text-brand-accent font-bold mb-1 uppercase flex items-center gap-1">
-                                                    <Info size={10}/> Padrão Aplicado (Auto)
-                                                </p>
-                                                <p className="text-[9px] text-gray-500 italic leading-tight">
-                                                    "Fundo branco sólido, enquadramento de rosto oficial (3x4), iluminação de estúdio."
-                                                </p>
-                                            </div>
-
                                             <div>
-                                                <label className="text-[10px] text-gray-400 flex items-center gap-1 mb-1 font-bold">
-                                                    <MessageSquare size={10}/> Ajustes Específicos (Opcional)
-                                                </label>
-                                                <textarea 
-                                                    value={additionalPrompt}
-                                                    onChange={e => setAdditionalPrompt(e.target.value)}
-                                                    placeholder="Ex: Corrigir olhos vermelhos, suavizar pele, remover óculos..."
-                                                    className="w-full bg-brand-primary border border-gray-600 rounded p-2 text-xs text-white focus:border-brand-accent outline-none resize-none h-14"
+                                                <label className="text-[10px] text-gray-500 block mb-1">Posição Y</label>
+                                                <input 
+                                                    type="number" 
+                                                    value={photoSettings.y} 
+                                                    onChange={e => setPhotoSettings({...photoSettings, y: parseInt(e.target.value)})}
+                                                    className="w-full bg-brand-primary border border-gray-600 rounded p-1 text-xs text-white"
                                                 />
                                             </div>
-
-                                            <Tooltip text="Aplica o padrão oficial + seus ajustes específicos usando IA (Gemini 3 Pro/Flash)">
-                                                <button 
-                                                    onClick={handleEditPhoto} 
-                                                    disabled={status.isEditingPhoto}
-                                                    className={`w-full py-3 rounded-lg font-bold text-sm flex items-center justify-center gap-2 shadow-lg transition-all ${status.isEditingPhoto ? 'bg-gray-700 text-gray-400 cursor-not-allowed' : 'bg-purple-600 hover:bg-purple-500 text-white'}`}
-                                                >
-                                                    {status.isEditingPhoto ? (
-                                                        <><div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full"/> Processando...</>
-                                                    ) : (
-                                                        <><Sparkles size={16} /> Gerar Foto Oficial</>
-                                                    )}
-                                                </button>
-                                            </Tooltip>
                                         </div>
-                                    )}
-                                </div>
-                            </div>
-                        ) : (
-                            /* --- GENERATE MODE --- */
-                            <div className="bg-brand-primary/20 p-4 rounded-lg border border-gray-700">
-                                <div className="mb-4">
-                                    <label className="text-xs text-gray-400 font-bold uppercase mb-2 block">Descrição do Residente</label>
-                                    <textarea 
-                                        value={genPrompt}
-                                        onChange={e => setGenPrompt(e.target.value)}
-                                        placeholder="Ex: Homem idoso, cabelos grisalhos curtos, óculos de leitura, expressão séria, camisa social azul clara."
-                                        className="w-full bg-brand-primary border border-gray-600 rounded p-3 text-sm text-white focus:border-purple-500 outline-none resize-none h-24"
-                                    />
-                                </div>
-                                <div className="grid grid-cols-2 gap-4 mb-6">
-                                    <div>
-                                        <label className="text-[10px] text-gray-500 uppercase font-bold mb-1 block">Qualidade</label>
-                                        <select value={genSize} onChange={e => setGenSize(e.target.value as any)} className="w-full bg-brand-primary border border-gray-600 rounded p-2 text-sm text-white">
-                                            <option value="1K">1K (Padrão)</option>
-                                            <option value="2K">2K (Alta)</option>
-                                            <option value="4K">4K (Ultra)</option>
-                                        </select>
-                                    </div>
-                                    <div>
-                                        <label className="text-[10px] text-gray-500 uppercase font-bold mb-1 block">Proporção</label>
-                                        <select value={genRatio} onChange={e => setGenRatio(e.target.value)} className="w-full bg-brand-primary border border-gray-600 rounded p-2 text-sm text-white">
-                                            <option value="1:1">1:1 (Quadrada)</option>
-                                            <option value="3:4">3:4 (Retrato)</option>
-                                            <option value="4:3">4:3 (Paisagem)</option>
-                                        </select>
                                     </div>
                                 </div>
-                                <button 
-                                    onClick={handleGenerateAvatar}
-                                    disabled={status.isEditingPhoto}
-                                    className="w-full bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 text-white font-bold py-3 rounded-lg shadow-lg flex items-center justify-center gap-2"
-                                >
-                                    {status.isEditingPhoto ? "Gerando..." : <><Wand2 size={18}/> Gerar Avatar (Gemini 3 Pro)</>}
-                                </button>
+
+                                {uploadedPhotoBase64 && (
+                                    <div className="space-y-3">
+                                        <div className="bg-brand-primary/30 p-3 rounded border border-gray-600/50">
+                                            <p className="text-[10px] text-brand-accent font-bold mb-1 uppercase flex items-center gap-1">
+                                                <Info size={10}/> Padrão Aplicado (Auto)
+                                            </p>
+                                            <p className="text-[9px] text-gray-500 italic leading-tight">
+                                                "Fundo branco sólido, enquadramento de rosto oficial (3x4), iluminação de estúdio."
+                                            </p>
+                                        </div>
+
+                                        <div>
+                                            <label className="text-[10px] text-gray-400 flex items-center gap-1 mb-1 font-bold">
+                                                <MessageSquare size={10}/> Ajustes Específicos (Opcional)
+                                            </label>
+                                            <textarea 
+                                                value={additionalPrompt}
+                                                onChange={e => setAdditionalPrompt(e.target.value)}
+                                                placeholder="Ex: Corrigir olhos vermelhos, suavizar pele, remover óculos..."
+                                                className="w-full bg-brand-primary border border-gray-600 rounded p-2 text-xs text-white focus:border-brand-accent outline-none resize-none h-14"
+                                            />
+                                        </div>
+
+                                        <Tooltip text="Aplica o padrão oficial + seus ajustes específicos usando IA (Gemini 3 Pro/Flash)">
+                                            <button 
+                                                onClick={handleEditPhoto} 
+                                                disabled={status.isEditingPhoto}
+                                                className={`w-full py-3 rounded-lg font-bold text-sm flex items-center justify-center gap-2 shadow-lg transition-all ${status.isEditingPhoto ? 'bg-gray-700 text-gray-400 cursor-not-allowed' : 'bg-purple-600 hover:bg-purple-500 text-white'}`}
+                                            >
+                                                {status.isEditingPhoto ? (
+                                                    <><div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full"/> Processando...</>
+                                                ) : (
+                                                    <><Sparkles size={16} /> Gerar Foto Oficial</>
+                                                )}
+                                            </button>
+                                        </Tooltip>
+                                        {!isAiReady && <p className="text-[10px] text-red-400 text-center mt-1">IA Indisponível - Verifique Chave API</p>}
+                                    </div>
+                                )}
                             </div>
-                        )}
+                        </div>
                     </div>
                 </div>
             </div>
@@ -1135,7 +1194,7 @@ const App: React.FC = () => {
                 <div className="text-center w-full max-w-lg">
                     <BarChart3 size={64} className="mx-auto mb-4 opacity-20" />
                     <h3 className="text-xl text-white mb-2">Dashboard Geral</h3>
-                    <p className="mb-8">S.I.E. Conectado: MySQL Database Active</p>
+                    <p className="mb-8">S.I.E. Conectado: {isBackendConnected ? "MySQL Database Active" : "Modo Offline (Fallback)"}</p>
                     <div className="flex flex-col sm:flex-row gap-4 justify-center">
                         <button onClick={() => setView(AppView.RESIDENTS_LIST)} className="bg-brand-secondary hover:bg-brand-accent/20 px-6 py-4 rounded-lg flex flex-col items-center gap-2 border border-gray-700 transition w-full sm:w-auto">
                             <Users size={24} className="text-brand-accent"/>

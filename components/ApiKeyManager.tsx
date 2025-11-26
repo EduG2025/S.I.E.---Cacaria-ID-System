@@ -34,16 +34,22 @@ export const ApiKeyManager: React.FC = () => {
 
         // 2. Save
         try {
-            await api.addApiKey({
+            const result = await api.addApiKey({
                 id: crypto.randomUUID(),
                 label: newKey.label,
                 key: newKey.key,
                 isActive: keys.length === 0, // First key auto active
                 createdAt: new Date().toISOString()
             });
+            
+            if (result && (result as any).offline) {
+                alert("⚠️ Atenção: Chave salva apenas LOCALMENTE (Offline) devido a erro no servidor.");
+            } else {
+                alert("✅ Chave validada e salva no Banco de Dados!");
+            }
+
             setNewKey({ label: '', key: '' });
             loadKeys();
-            alert("Chave adicionada com sucesso!");
         } catch (e) {
             alert("Erro ao salvar chave");
         }

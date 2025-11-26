@@ -5,6 +5,7 @@ import { api } from "./api";
 export const validateApiKey = async (testKey: string): Promise<boolean> => {
     try {
         const ai = new GoogleGenAI({ apiKey: testKey });
+        // Teste simples de texto para validar a chave
         await ai.models.generateContent({
             model: 'gemini-2.5-flash',
             contents: { parts: [{ text: "ping" }] }
@@ -110,27 +111,21 @@ export const editResidentPhoto = async (base64Image: string, prompt: string, mim
 
   } catch (error: any) {
     const errMsg = (error.message || JSON.stringify(error)).toLowerCase();
-    console.warn(`Gemini 3 Pro falhou (${errMsg}). Tentando fallback...`);
+    console.warn(`Gemini 3 Pro falhou (${errMsg}). Iniciando Fallback Automático...`);
 
-    // Verifica se é erro de Cota (429) ou Recurso Esgotado
-    if (errMsg.includes('429') || errMsg.includes('resource_exhausted') || errMsg.includes('quota')) {
-        
-        // TENTATIVA 2: Gemini 2.5 Flash Image (Nano Banana - Mais Econômico)
-        try {
-            console.log("Tentando fallback com Gemini 2.5 Flash (Nano Banana)...");
-            const responseFallback = await ai.models.generateContent({
-              model: 'gemini-2.5-flash-image',
-              contents: { parts },
-            });
-            return extractImageFromResponse(responseFallback);
-        } catch (fallbackError: any) {
-            console.error("Fallback também falhou:", fallbackError);
-            throw new Error("Cota de edição de imagem esgotada em TODOS os modelos (Pro e Flash). Tente novamente mais tarde ou troque a Chave API.");
-        }
+    // Fallback automático para QUALQUER erro (Cota 429, Modelo 404, Server 500)
+    // TENTATIVA 2: Gemini 2.5 Flash Image (Nano Banana - Mais Econômico e Rápido)
+    try {
+        console.log("Tentando fallback com Gemini 2.5 Flash (Nano Banana)...");
+        const responseFallback = await ai.models.generateContent({
+          model: 'gemini-2.5-flash-image',
+          contents: { parts },
+        });
+        return extractImageFromResponse(responseFallback);
+    } catch (fallbackError: any) {
+        console.error("Fallback também falhou:", fallbackError);
+        throw new Error("Falha na edição de imagem em todos os modelos (Pro e Flash). Tente novamente mais tarde.");
     }
-
-    // Se for outro erro (ex: imagem inválida), lança direto
-    throw error;
   }
 };
 

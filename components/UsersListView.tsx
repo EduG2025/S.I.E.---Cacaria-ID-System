@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Settings, Trash2 } from 'lucide-react';
 import { SystemUser } from '@/types';

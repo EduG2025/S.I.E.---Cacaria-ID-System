@@ -1,9 +1,8 @@
-
 import React from 'react';
 import { Building, FileText, Search, Move, Users, Paperclip, Download, Trash2, Plus, ImageIcon, ShieldCheck, Upload, Save } from 'lucide-react';
 import { AssociationData, ProcessingStatus } from '@/types';
-import { ApiKeyManager } from './ApiKeyManager';
-import { Tooltip } from './Tooltip';
+import { ApiKeyManager } from '@/components/ApiKeyManager';
+import { Tooltip } from '@/components/Tooltip';
 
 interface SystemSettingsViewProps {
     associationData: AssociationData;
