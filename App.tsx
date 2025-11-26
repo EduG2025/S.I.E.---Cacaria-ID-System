@@ -1,8 +1,7 @@
-
 import React, { useState, useRef, useEffect } from 'react';
-import { Camera, Sparkles, Upload, FileText, Download, ShieldCheck, User as UserIcon, ZoomIn, Move, Settings, Lock, LayoutTemplate, Image as ImageIcon, FileImage, AlertTriangle, CheckCircle, BarChart3, Users, Search, Edit, Trash2, Plus, Info, Save, X, Building, Phone, Calendar, Paperclip, File, Wifi, WifiOff, LogOut, Palette } from 'lucide-react';
-import { Resident, ProcessingStatus, AppView, IDTemplate, PhotoSettings, User, SystemUser, AssociationData, Director, CustomTemplate } from './types';
-import { analyzeDocumentText, editResidentPhoto, fetchCompanyData } from './services/geminiService';
+import { Camera, Sparkles, Upload, FileText, Download, ShieldCheck, User as UserIcon, ZoomIn, Move, Settings, Lock, LayoutTemplate, Image as ImageIcon, FileImage, AlertTriangle, CheckCircle, BarChart3, Users, Search, Edit, Trash2, Plus, Info, Save, X, Building, Phone, Calendar, Paperclip, File, Wifi, WifiOff, LogOut, Palette, Key, Check, FileCheck } from 'lucide-react';
+import { Resident, ProcessingStatus, AppView, IDTemplate, PhotoSettings, User, SystemUser, AssociationData, Director, CustomTemplate, ApiKey } from '@/types';
+import { analyzeDocumentText, editResidentPhoto, fetchCompanyData, validateApiKey } from './services/geminiService';
 import { api } from './services/api'; 
 import { IDCard } from './components/IDCard';
 import { TemplateEditor } from './components/TemplateEditor';
@@ -370,12 +369,13 @@ const App: React.FC = () => {
 
   const handleEditPhoto = async () => {
     if (!uploadedPhotoBase64) return;
+    
     setStatus({ ...status, isEditingPhoto: true, message: 'Processando foto oficial (Gemini Nano Banana)...' });
     try {
       const newImage = await editResidentPhoto(uploadedPhotoBase64, editPrompt, uploadedPhotoMimeType);
       setResident(prev => ({ ...prev, photoUrl: newImage }));
       setUploadedPhotoBase64(newImage.split(',')[1]); 
-      setUploadedPhotoMimeType('image/png'); // Gemini usually returns PNG/JPEG, but let's assume valid base64
+      setUploadedPhotoMimeType('image/png'); 
     } catch (err: any) {
       console.error(err);
       const msg = err?.message || 'Erro desconhecido';
@@ -447,7 +447,7 @@ const App: React.FC = () => {
   };
 
   // --- Components ---
-
+  
   const RegistrationStatusPanel = () => {
       const fields = [
           { key: 'name', label: 'Nome Completo' },
@@ -681,6 +681,131 @@ const App: React.FC = () => {
       )
   }
 
+  // --- API KEY MANAGER COMPONENT ---
+  const ApiKeyManager = () => {
+    const [keys, setKeys] = useState<ApiKey[]>([]);
+    const [newKey, setNewKey] = useState({ label: '', key: '' });
+    const [isValidating, setIsValidating] = useState(false);
+
+    useEffect(() => {
+        loadKeys();
+    }, []);
+
+    const loadKeys = async () => {
+        try {
+            const data = await api.getApiKeys();
+            setKeys(data);
+        } catch (e) { console.error("Error loading keys", e); }
+    };
+
+    const handleAddKey = async () => {
+        if (!newKey.key || !newKey.label) return alert("Preencha o Nome e a Chave");
+        
+        setIsValidating(true);
+        // 1. Validate with Gemini
+        const isValid = await validateApiKey(newKey.key);
+        setIsValidating(false);
+
+        if (!isValid) {
+            return alert("Chave inválida ou inativa na Google AI Studio. Verifique e tente novamente.");
+        }
+
+        // 2. Save
+        try {
+            await api.addApiKey({
+                id: crypto.randomUUID(),
+                label: newKey.label,
+                key: newKey.key,
+                isActive: keys.length === 0, // First key auto active
+                createdAt: new Date().toISOString()
+            });
+            setNewKey({ label: '', key: '' });
+            loadKeys();
+            alert("Chave adicionada com sucesso!");
+        } catch (e) {
+            alert("Erro ao salvar chave");
+        }
+    };
+
+    const toggleStatus = async (id: string, currentStatus: boolean) => {
+        try {
+            await api.updateApiKeyStatus(id, !currentStatus);
+            loadKeys();
+        } catch (e) { alert("Erro ao atualizar status"); }
+    };
+
+    const deleteKey = async (id: string) => {
+        if (confirm("Tem certeza? O sistema pode parar de funcionar se não houver outra chave ativa.")) {
+            await api.deleteApiKey(id);
+            loadKeys();
+        }
+    };
+
+    return (
+        <div className="bg-brand-secondary p-6 rounded-xl border border-gray-700 shadow-lg mt-6">
+             <h3 className="text-white font-bold mb-4 flex items-center gap-2 uppercase text-sm">
+                 <Key size={16} className="text-yellow-500"/> Gestão de Chaves API (Gemini)
+             </h3>
+             <p className="text-xs text-gray-400 mb-4">
+                 O sistema usará exclusivamente a chave marcada como <span className="text-green-400">ATIVA</span>. 
+                 A chave do arquivo .env será ignorada.
+             </p>
+
+             <div className="flex gap-4 mb-6">
+                 <input 
+                    placeholder="Identificador (ex: Chave Pessoal)" 
+                    value={newKey.label} 
+                    onChange={e => setNewKey({...newKey, label: e.target.value})}
+                    className="flex-1 bg-brand-primary border border-gray-700 rounded p-2 text-white text-sm"
+                 />
+                 <input 
+                    placeholder="Cole a API Key aqui (AIza...)" 
+                    value={newKey.key} 
+                    onChange={e => setNewKey({...newKey, key: e.target.value})}
+                    type="password"
+                    className="flex-[2] bg-brand-primary border border-gray-700 rounded p-2 text-white text-sm"
+                 />
+                 <button 
+                    onClick={handleAddKey} 
+                    disabled={isValidating}
+                    className="bg-green-600 hover:bg-green-700 text-white px-4 rounded text-sm font-bold disabled:opacity-50"
+                 >
+                     {isValidating ? "Validando..." : "Adicionar"}
+                 </button>
+             </div>
+
+             <div className="space-y-2">
+                 {keys.length === 0 && <p className="text-red-400 text-xs">Nenhuma chave configurada. O sistema não funcionará.</p>}
+                 {keys.map(k => (
+                     <div key={k.id} className="flex items-center justify-between bg-brand-primary p-3 rounded border border-gray-700">
+                         <div className="flex items-center gap-3">
+                             <div className={`w-3 h-3 rounded-full ${k.isActive ? 'bg-green-500 shadow-[0_0_10px_rgba(34,197,94,0.5)]' : 'bg-gray-600'}`}></div>
+                             <div>
+                                 <p className="text-sm font-bold text-white">{k.label}</p>
+                                 <p className="text-[10px] text-gray-500 font-mono">
+                                     {k.key.substring(0, 8)}...{k.key.substring(k.key.length - 4)}
+                                 </p>
+                             </div>
+                         </div>
+                         <div className="flex items-center gap-3">
+                             {!k.isActive && (
+                                 <button onClick={() => toggleStatus(k.id, k.isActive)} className="text-xs text-gray-400 hover:text-green-400 border border-gray-600 px-2 py-1 rounded">
+                                     Ativar
+                                 </button>
+                             )}
+                             {k.isActive && <span className="text-xs text-green-500 font-bold px-2">EM USO</span>}
+                             
+                             <button onClick={() => deleteKey(k.id)} className="text-red-400 hover:text-white p-1">
+                                 <Trash2 size={16}/>
+                             </button>
+                         </div>
+                     </div>
+                 ))}
+             </div>
+        </div>
+    );
+  };
+
   const SystemSettingsView = () => {
     const handleDirectorAdd = () => {
         setAssociationData(prev => ({
@@ -710,6 +835,29 @@ const App: React.FC = () => {
                 directors: prev.management.directors.map(d => d.id === id ? { ...d, [field]: value } : d)
             }
         }));
+    };
+
+    const handlePdfUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (e.target.files && e.target.files[0]) {
+            const file = e.target.files[0];
+            if (file.type !== 'application/pdf') {
+                return alert("Por favor, selecione apenas arquivos PDF.");
+            }
+            const reader = new FileReader();
+            reader.onload = (ev) => {
+                if (ev.target?.result) {
+                    const base64 = ev.target.result as string;
+                    setAssociationData(prev => ({
+                        ...prev,
+                        management: {
+                            ...prev.management,
+                            electionMinutesPdf: base64
+                        }
+                    }));
+                }
+            };
+            reader.readAsDataURL(file);
+        }
     };
 
     const inputClass = "w-full bg-brand-primary border border-gray-700 rounded-lg p-2.5 text-white text-sm focus:border-brand-accent outline-none";
@@ -777,6 +925,10 @@ const App: React.FC = () => {
                             </div>
                         </div>
                     </div>
+                    
+                    {/* NEW: API KEY MANAGEMENT */}
+                    <ApiKeyManager />
+
                 </div>
 
                 <div className="space-y-6">
@@ -803,6 +955,45 @@ const App: React.FC = () => {
                                     <label className={labelClass}>Fim Mandato</label>
                                     <input type="month" value={associationData.management.mandateEnd} onChange={e => setAssociationData({...associationData, management: {...associationData.management, mandateEnd: e.target.value}})} className={inputClass} />
                                 </div>
+                            </div>
+
+                             {/* Election Minutes PDF (ATA) */}
+                             <div className="border-t border-gray-700 pt-4">
+                                <label className={labelClass}>Documentação Oficial (Ata da Eleição)</label>
+                                {!associationData.management.electionMinutesPdf ? (
+                                    <label className="w-full border-2 border-dashed border-gray-600 hover:border-brand-accent rounded-lg p-4 flex flex-col items-center justify-center cursor-pointer bg-brand-primary/30 transition-colors">
+                                        <Paperclip className="text-gray-400 mb-1" size={20}/>
+                                        <span className="text-xs text-gray-400 font-bold uppercase">Carregar PDF da Ata</span>
+                                        <input type="file" accept="application/pdf" className="hidden" onChange={handlePdfUpload} />
+                                    </label>
+                                ) : (
+                                    <div className="bg-brand-primary border border-gray-600 rounded-lg p-3 flex items-center justify-between">
+                                        <div className="flex items-center gap-3">
+                                            <FileText className="text-red-400" size={24}/>
+                                            <div>
+                                                <p className="text-xs text-white font-bold uppercase">Ata da Eleição.pdf</p>
+                                                <p className="text-[10px] text-gray-500">Documento Anexado</p>
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <a 
+                                                href={associationData.management.electionMinutesPdf} 
+                                                download="Ata_Eleicao.pdf" 
+                                                className="p-1.5 bg-brand-secondary hover:bg-brand-accent text-brand-accent hover:text-white rounded transition"
+                                                title="Baixar PDF"
+                                            >
+                                                <Download size={16}/>
+                                            </a>
+                                            <button 
+                                                onClick={() => setAssociationData(prev => ({...prev, management: {...prev.management, electionMinutesPdf: null}}))} 
+                                                className="p-1.5 bg-brand-secondary hover:bg-red-600 text-red-400 hover:text-white rounded transition"
+                                                title="Remover"
+                                            >
+                                                <Trash2 size={16}/>
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
                             </div>
 
                             {/* Dynamic Directors */}
