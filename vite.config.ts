@@ -10,7 +10,6 @@ const __dirname = path.dirname(__filename);
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => {
   // Load env file based on `mode` in the current working directory.
-  // Set the third parameter to '' to load all env regardless of the `VITE_` prefix.
   const env = loadEnv(mode, (process as any).cwd(), '');
 
   return {
@@ -21,7 +20,7 @@ export default defineConfig(({ mode }) => {
       },
     },
     define: {
-      // Polyfill process.env for the Google GenAI SDK
+      // Polyfill process.env for the Google GenAI SDK usage in browser
       'process.env.API_KEY': JSON.stringify(env.API_KEY),
     },
     server: {
@@ -30,6 +29,17 @@ export default defineConfig(({ mode }) => {
     build: {
       outDir: 'dist',
       emptyOutDir: true,
+      chunkSizeWarningLimit: 1000, // Aumenta limite de aviso para 1MB
+      rollupOptions: {
+        output: {
+          // Separa bibliotecas em arquivos diferentes para cache eficiente
+          manualChunks: {
+            vendor: ['react', 'react-dom', 'lucide-react'],
+            ai: ['@google/genai'],
+            utils: ['html2canvas']
+          }
+        }
+      }
     }
   };
 });
