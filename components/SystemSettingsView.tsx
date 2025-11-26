@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { Building, FileText, Search, Move, Users, Paperclip, Download, Trash2, Plus, ImageIcon, ShieldCheck, Upload, Save } from 'lucide-react';
 import { AssociationData, ProcessingStatus } from '@/types';
@@ -74,7 +75,7 @@ export const SystemSettingsView: React.FC<SystemSettingsViewProps> = ({
     const labelClass = "block text-xs uppercase text-gray-500 font-bold mb-1";
 
     return (
-        <div className="p-8 max-w-[1200px] mx-auto">
+        <div className="p-4 md:p-8 max-w-[1200px] mx-auto pb-20">
             <h2 className="text-2xl font-bold text-white flex items-center gap-2 mb-6"><Building className="text-brand-accent"/> Configurações da Associação</h2>
             
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
@@ -87,7 +88,7 @@ export const SystemSettingsView: React.FC<SystemSettingsViewProps> = ({
                                 <label className={labelClass}>Nome da Associação (Fantasia)</label>
                                 <input value={associationData.name} onChange={e => setAssociationData({...associationData, name: e.target.value})} className={inputClass} />
                             </div>
-                            <div className="grid grid-cols-2 gap-4">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                 <div>
                                     <label className={labelClass}>CNPJ</label>
                                     <div className="relative">
@@ -109,8 +110,8 @@ export const SystemSettingsView: React.FC<SystemSettingsViewProps> = ({
                     <div className="bg-brand-secondary p-6 rounded-xl border border-gray-700 shadow-lg">
                         <h3 className="text-white font-bold mb-4 flex items-center gap-2 uppercase text-sm"><Move size={16}/> Endereço & Contato</h3>
                         <div className="space-y-4">
-                            <div className="grid grid-cols-3 gap-4">
-                                <div className="col-span-2">
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                                <div className="sm:col-span-2">
                                     <label className={labelClass}>Logradouro</label>
                                     <input value={associationData.address.street} onChange={e => setAssociationData({...associationData, address: {...associationData.address, street: e.target.value}})} className={inputClass} />
                                 </div>
@@ -119,7 +120,7 @@ export const SystemSettingsView: React.FC<SystemSettingsViewProps> = ({
                                     <input value={associationData.address.number} onChange={e => setAssociationData({...associationData, address: {...associationData.address, number: e.target.value}})} className={inputClass} />
                                 </div>
                             </div>
-                            <div className="grid grid-cols-3 gap-4">
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                                 <div>
                                     <label className={labelClass}>Cidade</label>
                                     <input value={associationData.address.city} onChange={e => setAssociationData({...associationData, address: {...associationData.address, city: e.target.value}})} className={inputClass} />
@@ -146,7 +147,7 @@ export const SystemSettingsView: React.FC<SystemSettingsViewProps> = ({
                     <div className="bg-brand-secondary p-6 rounded-xl border border-gray-700 shadow-lg">
                         <h3 className="text-white font-bold mb-4 flex items-center gap-2 uppercase text-sm"><Users size={16}/> Gestão & Diretoria</h3>
                         <div className="space-y-4">
-                            <div className="grid grid-cols-2 gap-4">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                 <div>
                                     <label className={labelClass}>Presidente</label>
                                     <input value={associationData.management.president} onChange={e => setAssociationData({...associationData, management: {...associationData.management, president: e.target.value}})} className={inputClass} />
@@ -156,7 +157,7 @@ export const SystemSettingsView: React.FC<SystemSettingsViewProps> = ({
                                     <input value={associationData.management.vicePresident} onChange={e => setAssociationData({...associationData, management: {...associationData.management, vicePresident: e.target.value}})} className={inputClass} />
                                 </div>
                             </div>
-                            <div className="grid grid-cols-2 gap-4">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                 <div>
                                     <label className={labelClass}>Início Mandato</label>
                                     <input type="month" value={associationData.management.mandateStart} onChange={e => setAssociationData({...associationData, management: {...associationData.management, mandateStart: e.target.value}})} className={inputClass} />
@@ -177,7 +178,7 @@ export const SystemSettingsView: React.FC<SystemSettingsViewProps> = ({
                                         <input type="file" accept="application/pdf" className="hidden" onChange={handlePdfUpload} />
                                     </label>
                                 ) : (
-                                    <div className="bg-brand-primary border border-gray-600 rounded-lg p-3 flex items-center justify-between">
+                                    <div className="bg-brand-primary border border-gray-600 rounded-lg p-3 flex flex-col sm:flex-row items-center justify-between gap-2">
                                         <div className="flex items-center gap-3">
                                             <FileText className="text-red-400" size={24}/>
                                             <div>
@@ -229,16 +230,16 @@ export const SystemSettingsView: React.FC<SystemSettingsViewProps> = ({
                     {/* Logo & Actions */}
                     <div className="bg-brand-secondary p-6 rounded-xl border border-gray-700 shadow-lg">
                          <h3 className="text-white font-bold mb-4 flex items-center gap-2 uppercase text-sm"><ImageIcon size={16}/> Identidade Visual</h3>
-                         <div className="flex gap-6 items-center">
-                             <div className="w-24 h-24 bg-brand-primary rounded-lg border border-gray-600 flex items-center justify-center overflow-hidden">
+                         <div className="flex flex-col sm:flex-row gap-6 items-center">
+                             <div className="w-24 h-24 bg-brand-primary rounded-lg border border-gray-600 flex items-center justify-center overflow-hidden shrink-0">
                                  {organizationLogo ? (
                                      <img src={organizationLogo} alt="Logo" className="w-full h-full object-contain" />
                                  ) : (
                                      <ShieldCheck size={32} className="text-gray-600"/>
                                  )}
                              </div>
-                             <div className="flex-1">
-                                 <label className="bg-brand-primary hover:bg-brand-accent/20 border border-gray-600 hover:border-brand-accent text-white px-4 py-2 rounded-lg cursor-pointer flex items-center gap-2 w-fit transition mb-2">
+                             <div className="flex-1 w-full text-center sm:text-left">
+                                 <label className="bg-brand-primary hover:bg-brand-accent/20 border border-gray-600 hover:border-brand-accent text-white px-4 py-2 rounded-lg cursor-pointer flex items-center justify-center sm:justify-start gap-2 w-full sm:w-fit transition mb-2">
                                      <Upload size={16} /> Carregar Nova Logo
                                      <input type="file" accept="image/*" className="hidden" onChange={handleLogoUpload} />
                                  </label>
@@ -250,7 +251,7 @@ export const SystemSettingsView: React.FC<SystemSettingsViewProps> = ({
             </div>
             
             <div className="mt-8 flex justify-end">
-                <button onClick={onSave} className="bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-8 rounded-lg shadow-lg flex items-center gap-2 transition">
+                <button onClick={onSave} className="w-full sm:w-auto bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-8 rounded-lg shadow-lg flex items-center justify-center gap-2 transition">
                     <Save size={20} /> Salvar Configurações
                 </button>
             </div>

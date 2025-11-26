@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { Settings, Trash2 } from 'lucide-react';
 import { SystemUser } from '@/types';
@@ -31,7 +32,7 @@ export const UsersListView: React.FC<UsersListViewProps> = ({ systemUsers, refre
     }
 
     return (
-      <div className="p-8 max-w-[1200px] mx-auto">
+      <div className="p-4 md:p-8 max-w-[1200px] mx-auto pb-20">
            <h2 className="text-2xl font-bold text-white flex items-center gap-2 mb-6"><Settings className="text-brand-accent"/> Gestão de Usuários (Admin)</h2>
            
            <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
@@ -54,30 +55,32 @@ export const UsersListView: React.FC<UsersListViewProps> = ({ systemUsers, refre
 
                {/* List */}
                <div className="md:col-span-2 bg-brand-secondary rounded-xl border border-gray-700 overflow-hidden">
-                   <table className="w-full text-left">
-                       <thead className="bg-brand-primary text-gray-400 text-xs uppercase">
-                           <tr>
-                               <th className="p-4">Nome</th>
-                               <th className="p-4">Login</th>
-                               <th className="p-4">Perfil</th>
-                               <th className="p-4 text-right">Ação</th>
-                           </tr>
-                       </thead>
-                       <tbody className="divide-y divide-gray-700">
-                           {systemUsers.map(u => (
-                               <tr key={u.id}>
-                                   <td className="p-4 text-white font-bold">{u.name}</td>
-                                   <td className="p-4 text-gray-400">{u.username}</td>
-                                   <td className="p-4"><span className={`text-xs px-2 py-1 rounded ${u.role === 'ADMIN' ? 'bg-purple-500/20 text-purple-300' : 'bg-blue-500/20 text-blue-300'}`}>{u.role}</span></td>
-                                   <td className="p-4 text-right">
-                                       {u.username !== 'admin' && (
-                                           <button onClick={() => handleDeleteUser(u.id)} className="text-red-400 hover:text-white"><Trash2 size={16}/></button>
-                                       )}
-                                   </td>
+                   <div className="overflow-x-auto">
+                       <table className="w-full text-left min-w-[500px]">
+                           <thead className="bg-brand-primary text-gray-400 text-xs uppercase">
+                               <tr>
+                                   <th className="p-4">Nome</th>
+                                   <th className="p-4">Login</th>
+                                   <th className="p-4">Perfil</th>
+                                   <th className="p-4 text-right">Ação</th>
                                </tr>
-                           ))}
-                       </tbody>
-                   </table>
+                           </thead>
+                           <tbody className="divide-y divide-gray-700">
+                               {systemUsers.map(u => (
+                                   <tr key={u.id}>
+                                       <td className="p-4 text-white font-bold">{u.name}</td>
+                                       <td className="p-4 text-gray-400">{u.username}</td>
+                                       <td className="p-4"><span className={`text-xs px-2 py-1 rounded ${u.role === 'ADMIN' ? 'bg-purple-500/20 text-purple-300' : 'bg-blue-500/20 text-blue-300'}`}>{u.role}</span></td>
+                                       <td className="p-4 text-right">
+                                           {u.username !== 'admin' && (
+                                               <button onClick={() => handleDeleteUser(u.id)} className="text-red-400 hover:text-white"><Trash2 size={16}/></button>
+                                           )}
+                                       </td>
+                                   </tr>
+                               ))}
+                           </tbody>
+                       </table>
+                   </div>
                </div>
            </div>
       </div>
