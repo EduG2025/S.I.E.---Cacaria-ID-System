@@ -446,7 +446,7 @@ const App: React.FC = () => {
         ? `${baseEditPrompt} Instruções adicionais específicas do usuário: ${additionalPrompt}` 
         : baseEditPrompt;
 
-    setStatus({ ...status, isEditingPhoto: true, message: 'Processando foto oficial (Gemini Nano Banana)...' });
+    setStatus({ ...status, isEditingPhoto: true, message: 'Processando foto (Gemini 3 Pro + Fallback)...' });
     try {
       const newImage = await editResidentPhoto(uploadedPhotoBase64, finalPrompt, uploadedPhotoMimeType);
       setResident(prev => ({ ...prev, photoUrl: newImage }));
@@ -455,10 +455,10 @@ const App: React.FC = () => {
     } catch (err: any) {
       console.error(err);
       const msg = err?.message || 'Erro desconhecido';
-      if (msg.includes("API_KEY")) {
-          alert(`Erro de Configuração: Chave de API ausente.`);
+      if (msg.includes("API_KEY_MISSING")) {
+          alert(`Erro Crítico: Nenhuma Chave de API ativa. Acesse 'Sistema' para configurar.`);
       } else {
-          alert(`Erro na edição da imagem: ${msg}`);
+          alert(`Falha na edição: ${msg}`);
       }
     } finally {
       setStatus({ ...status, isEditingPhoto: false, message: '' });
@@ -1058,7 +1058,7 @@ const App: React.FC = () => {
                                                 />
                                             </div>
 
-                                            <Tooltip text="Aplica o padrão oficial + seus ajustes específicos usando IA">
+                                            <Tooltip text="Aplica o padrão oficial + seus ajustes específicos usando IA (Gemini 3 Pro/Flash)">
                                                 <button 
                                                     onClick={handleEditPhoto} 
                                                     disabled={status.isEditingPhoto}

@@ -24,14 +24,23 @@ const getAI = async () => {
   const apiKey = await api.getActiveApiKey();
   
   if (!apiKey) {
-    throw new Error("Nenhuma Chave de API ativa encontrada no Sistema. Entre em contato com o Administrador para configurar uma chave válida.");
+    throw new Error("API_KEY_MISSING: Nenhuma Chave de API ativa encontrada no Sistema.");
   }
   return new GoogleGenAI({ apiKey });
 };
 
+// Helper to extract image data from response
+const extractImageFromResponse = (response: any): string => {
+    for (const part of response.candidates?.[0]?.content?.parts || []) {
+      if (part.inlineData) {
+        return `data:image/png;base64,${part.inlineData.data}`;
+      }
+    }
+    throw new Error("A IA processou a solicitação mas não retornou dados de imagem.");
+};
+
 // --- 1. Fast Text Analysis (OCR/Extraction) ---
 // Model: gemini-2.5-flash
-// Reason: Best trade-off for speed and multimodal capabilities.
 export const analyzeDocumentText = async (base64Image: string, mimeType: string = 'image/jpeg'): Promise<any> => {
   try {
     const ai = await getAI();
@@ -39,15 +48,8 @@ export const analyzeDocumentText = async (base64Image: string, mimeType: string 
       model: 'gemini-2.5-flash',
       contents: {
         parts: [
-          {
-            inlineData: {
-              mimeType: mimeType,
-              data: base64Image
-            }
-          },
-          {
-            text: "Extract the following data from this ID document: Name, CPF, RG, Date of Birth. Return strictly as JSON."
-          }
+          { inlineData: { mimeType: mimeType, data: base64Image } },
+          { text: "Extract the following data from this ID document: Name, CPF, RG, Date of Birth. Return strictly as JSON." }
         ]
       },
       config: {
@@ -71,51 +73,58 @@ export const analyzeDocumentText = async (base64Image: string, mimeType: string 
 };
 
 // --- 2. Image Editing (Photo Studio) ---
-// Model: gemini-2.5-flash-image
-// Reason: Specialized model for image manipulation and editing via text prompts.
+// STRATEGY: Priority Gemini 3 Pro -> Fallback Gemini 2.5 Flash (Nano Banana)
 export const editResidentPhoto = async (base64Image: string, prompt: string, mimeType: string = 'image/jpeg'): Promise<string> => {
-  try {
-    const ai = await getAI();
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash-image', 
-      contents: {
-        parts: [
-          {
-            inlineData: {
-              mimeType: mimeType,
-              data: base64Image,
-            },
-          },
-          {
-            text: prompt,
-          },
-        ],
-      },
-    });
+  const ai = await getAI();
+  
+  const parts = [
+    { inlineData: { mimeType: mimeType, data: base64Image } },
+    { text: prompt },
+  ];
 
-    for (const part of response.candidates?.[0]?.content?.parts || []) {
-      if (part.inlineData) {
-        return `data:image/png;base64,${part.inlineData.data}`;
-      }
-    }
-    throw new Error("A IA não retornou nenhuma imagem gerada.");
+  // TENTATIVA 1: Gemini 3 Pro (Melhor Qualidade)
+  try {
+    console.log("Tentando edição com Gemini 3 Pro...");
+    const response = await ai.models.generateContent({
+      model: 'gemini-3-pro-image-preview', 
+      contents: { parts },
+    });
+    return extractImageFromResponse(response);
+
   } catch (error: any) {
-    console.error("Error editing photo:", error);
+    const errMsg = error.message || JSON.stringify(error);
+    console.warn(`Gemini 3 Pro falhou (${errMsg}). Tentando fallback...`);
+
+    // Verifica se é erro de Cota (429) ou Recurso Esgotado
+    if (errMsg.includes('429') || errMsg.includes('RESOURCE_EXHAUSTED') || errMsg.includes('quota')) {
+        
+        // TENTATIVA 2: Gemini 2.5 Flash Image (Nano Banana - Mais Econômico)
+        try {
+            console.log("Tentando fallback com Gemini 2.5 Flash (Nano Banana)...");
+            const responseFallback = await ai.models.generateContent({
+              model: 'gemini-2.5-flash-image',
+              contents: { parts },
+            });
+            return extractImageFromResponse(responseFallback);
+        } catch (fallbackError: any) {
+            console.error("Fallback também falhou:", fallbackError);
+            throw new Error("Cota de edição de imagem esgotada em TODOS os modelos (Pro e Flash). Tente novamente mais tarde ou troque a Chave API.");
+        }
+    }
+
+    // Se for outro erro (ex: imagem inválida), lança direto
     throw error;
   }
 };
 
 // --- 3. Image Generation (Assets) ---
 // Model: gemini-3-pro-image-preview
-// Reason: Highest quality generation model for creating assets from scratch (1K/2K/4K).
 export const generatePlaceholderAvatar = async (description: string, size: '1K' | '2K' | '4K', aspectRatio: string = '1:1'): Promise<string> => {
   try {
     const ai = await getAI();
     const response = await ai.models.generateContent({
       model: 'gemini-3-pro-image-preview',
-      contents: {
-        parts: [{ text: description }]
-      },
+      contents: { parts: [{ text: description }] },
       config: {
         imageConfig: {
           imageSize: size,
@@ -123,13 +132,7 @@ export const generatePlaceholderAvatar = async (description: string, size: '1K' 
         }
       }
     });
-
-     for (const part of response.candidates?.[0]?.content?.parts || []) {
-      if (part.inlineData) {
-        return `data:image/png;base64,${part.inlineData.data}`;
-      }
-    }
-    throw new Error("No image generated");
+    return extractImageFromResponse(response);
   } catch (error) {
     console.error("Error generating avatar:", error);
     throw error;
@@ -138,7 +141,6 @@ export const generatePlaceholderAvatar = async (description: string, size: '1K' 
 
 // --- 4. Deep Analysis (Reasoning) ---
 // Model: gemini-3-pro-preview
-// Reason: Upgraded to Pro 3.0 for superior reasoning capabilities when detecting subtle signs of forgery or tampering.
 export const deepAnalyzeDocument = async (base64Image: string): Promise<string> => {
     try {
         const ai = await getAI();
@@ -160,7 +162,6 @@ export const deepAnalyzeDocument = async (base64Image: string): Promise<string> 
 
 // --- 5. Census Search (Search Grounding) ---
 // Model: gemini-2.5-flash
-// Reason: Flash 2.5 is highly efficient and low-latency for tool use (Google Search).
 export const searchPublicData = async (query: string): Promise<any> => {
   try {
     const ai = await getAI();
@@ -190,7 +191,6 @@ export const searchPublicData = async (query: string): Promise<any> => {
 
 // --- 6. Company Data Search (CNPJ) ---
 // Model: gemini-2.5-flash
-// Reason: Flash 2.5 is ideal for quick data retrieval via tools.
 export const fetchCompanyData = async (cnpj: string): Promise<any> => {
   try {
     const ai = await getAI();
