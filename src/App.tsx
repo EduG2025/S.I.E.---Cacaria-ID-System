@@ -2,7 +2,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Sparkles, Upload, FileText, Download, ShieldCheck, User as UserIcon, Settings, Lock, LayoutTemplate, Image as ImageIcon, FileImage, BarChart3, Users, Search, Plus, Save, X, Building, Wifi, WifiOff, LogOut, Palette, Camera, Video, MessageSquare, Info, Menu, Fingerprint, Wand2 } from 'lucide-react';
 import { Resident, ProcessingStatus, AppView, IDTemplate, PhotoSettings, User, SystemUser, AssociationData, CustomTemplate } from '@/types';
-import { analyzeDocumentText, editResidentPhoto, fetchCompanyData, deepAnalyzeDocument, validateApiKey } from '@/services/geminiService';
+import { analyzeDocumentText, editResidentPhoto, fetchCompanyData, generatePlaceholderAvatar, deepAnalyzeDocument, validateApiKey } from '@/services/geminiService';
 import { api } from '@/services/api'; 
 import { IDCard } from '@/components/IDCard';
 import { TemplateEditor } from '@/components/TemplateEditor';
@@ -481,31 +481,54 @@ const App: React.FC = () => {
     }
   };
 
+  // ROBUST IMAGE GENERATION FOR SAVING/PRINTING
   const getCleanImage = async () => {
       if (!idCardRef.current) return null;
-      // CRITICAL FIX: html2canvas doesn't read input values correctly unless we replace them with text
+      
+      // Force a re-render wait if needed, though usually synchronous calls are fine for values
       return html2canvas(idCardRef.current, { 
           scale: 3, 
           backgroundColor: '#ffffff', 
           useCORS: true,
           logging: false,
           onclone: (clonedDoc) => {
-              // Find all inputs in the cloned ID card
+              // This is the critical part: Replace Inputs with Spans to ensure text is captured
               const inputs = clonedDoc.querySelectorAll('input');
               inputs.forEach((input) => {
-                  // Create a text node or span with the current value
-                  const span = clonedDoc.createElement('span');
-                  span.textContent = input.value;
-                  // Copy styles to match
+                  const value = input.value;
+                  const span = clonedDoc.createElement('div');
+                  span.textContent = value;
+                  
+                  // Copy all relevant computed styles
                   const style = window.getComputedStyle(input);
-                  span.style.cssText = style.cssText;
+                  span.style.font = style.font;
+                  span.style.fontFamily = style.fontFamily;
+                  span.style.fontSize = style.fontSize;
+                  span.style.fontWeight = style.fontWeight;
+                  span.style.letterSpacing = style.letterSpacing;
+                  span.style.textTransform = style.textTransform;
+                  span.style.color = style.color;
+                  span.style.textAlign = style.textAlign;
+                  span.style.backgroundColor = 'transparent'; // Ensure clean background
                   span.style.border = 'none';
-                  span.style.background = 'transparent';
+                  
+                  // Layout properties
+                  span.style.position = style.position;
+                  span.style.left = style.left;
+                  span.style.top = style.top;
+                  span.style.width = style.width;
+                  span.style.height = style.height;
                   span.style.display = 'flex';
                   span.style.alignItems = 'center';
-                  span.style.height = '100%';
-                  // Replace input with span
-                  input.parentNode?.replaceChild(span, input);
+                  
+                  // Flex alignment mapping
+                  if (style.textAlign === 'right') span.style.justifyContent = 'flex-end';
+                  else if (style.textAlign === 'center') span.style.justifyContent = 'center';
+                  else span.style.justifyContent = 'flex-start';
+
+                  // Replace in DOM
+                  input.style.display = 'none';
+                  input.parentNode?.insertBefore(span, input);
               });
           }
       });
@@ -529,9 +552,9 @@ const App: React.FC = () => {
                       <head>
                           <title>Imprimir Carteirinha - S.I.E.</title>
                           <style>
-                              body { margin: 0; display: flex; justify-content: center; align-items: center; height: 100vh; }
-                              img { max-width: 100%; height: auto; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
-                              @media print { body { display: block; } img { box-shadow: none; } }
+                              body { margin: 0; display: flex; justify-content: center; align-items: center; height: 100vh; background: #f0f0f0; }
+                              img { max-width: 100%; height: auto; box-shadow: 0 0 15px rgba(0,0,0,0.2); }
+                              @media print { body { background: white; display: block; } img { box-shadow: none; } }
                           </style>
                       </head>
                       <body>
@@ -948,8 +971,9 @@ const App: React.FC = () => {
                         </h3>
 
                         <Tooltip text="A carteirinha é interativa! Clique nos textos para editar">
-                            <div className="w-full overflow-x-auto flex justify-center py-2 px-1">
-                                <div className="transform hover:scale-[1.02] transition-transform duration-300 shadow-2xl shadow-black/50 rounded-xl cursor-text shrink-0">
+                            {/* Visual Backdrop to make ID card pop */}
+                            <div className="w-full overflow-x-auto flex justify-center py-8 px-4 bg-brand-primary/50 rounded-xl border border-gray-700/50">
+                                <div className="transform hover:scale-[1.01] transition-transform duration-300 shadow-[0_20px_50px_rgba(0,0,0,0.5)] rounded-xl cursor-text shrink-0 relative">
                                     <IDCard 
                                         resident={resident} 
                                         template={template} 

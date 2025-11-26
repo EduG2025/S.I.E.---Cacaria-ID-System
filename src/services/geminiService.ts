@@ -1,3 +1,4 @@
+
 import { GoogleGenAI, Type } from "@google/genai";
 import { api } from "./api";
 
@@ -111,10 +112,10 @@ export const editResidentPhoto = async (base64Image: string, prompt: string, mim
 
   } catch (error: any) {
     const errMsg = (error.message || JSON.stringify(error)).toLowerCase();
-    console.warn(`Gemini 3 Pro falhou (${errMsg}). Tentando fallback...`);
+    console.warn(`Gemini 3 Pro falhou (${errMsg}). Iniciando Fallback Automático...`);
 
-    // Fallback automático para qualquer erro (Cota, Modelo não encontrado, etc)
-    // TENTATIVA 2: Gemini 2.5 Flash Image (Nano Banana - Mais Econômico)
+    // Fallback automático para QUALQUER erro (Cota 429, Modelo 404, Server 500)
+    // TENTATIVA 2: Gemini 2.5 Flash Image (Nano Banana - Mais Econômico e Rápido)
     try {
         console.log("Tentando fallback com Gemini 2.5 Flash (Nano Banana)...");
         const responseFallback = await ai.models.generateContent({
@@ -124,7 +125,7 @@ export const editResidentPhoto = async (base64Image: string, prompt: string, mim
         return extractImageFromResponse(responseFallback);
     } catch (fallbackError: any) {
         console.error("Fallback também falhou:", fallbackError);
-        throw new Error("Falha na edição de imagem. Verifique se sua Chave API possui permissões para 'gemini-2.5-flash-image' e se há cota disponível.");
+        throw new Error("Falha na edição de imagem em todos os modelos (Pro e Flash). Tente novamente mais tarde.");
     }
   }
 };
