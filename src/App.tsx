@@ -1,6 +1,6 @@
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Camera, Sparkles, Upload, FileText, Download, ShieldCheck, User as UserIcon, ZoomIn, Move, Settings, Lock, LayoutTemplate, Image as ImageIcon, FileImage, AlertTriangle, CheckCircle, BarChart3, Users, Search, Edit, Trash2, Plus, Info, Save, X, Building, Phone, Calendar, Paperclip, File, Wifi, WifiOff, LogOut, Palette, Key, Check } from 'lucide-react';
+import { Camera, Sparkles, Upload, FileText, Download, ShieldCheck, User as UserIcon, ZoomIn, Move, Settings, Lock, LayoutTemplate, Image as ImageIcon, FileImage, AlertTriangle, CheckCircle, BarChart3, Users, Search, Edit, Trash2, Plus, Info, Save, X, Building, Phone, Calendar, Paperclip, File, Wifi, WifiOff, LogOut, Palette, Key, Check, FileCheck } from 'lucide-react';
 import { Resident, ProcessingStatus, AppView, IDTemplate, PhotoSettings, User, SystemUser, AssociationData, Director, CustomTemplate, ApiKey } from './types';
 import { analyzeDocumentText, editResidentPhoto, fetchCompanyData, validateApiKey } from './services/geminiService';
 import { api } from './services/api'; 
@@ -451,7 +451,6 @@ const App: React.FC = () => {
   };
 
   // --- Components ---
-  // (Remaining components identical to previous versions, omitted for brevity but included in compilation)
   
   const RegistrationStatusPanel = () => {
       const fields = [
@@ -842,6 +841,29 @@ const App: React.FC = () => {
         }));
     };
 
+    const handlePdfUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (e.target.files && e.target.files[0]) {
+            const file = e.target.files[0];
+            if (file.type !== 'application/pdf') {
+                return alert("Por favor, selecione apenas arquivos PDF.");
+            }
+            const reader = new FileReader();
+            reader.onload = (ev) => {
+                if (ev.target?.result) {
+                    const base64 = ev.target.result as string;
+                    setAssociationData(prev => ({
+                        ...prev,
+                        management: {
+                            ...prev.management,
+                            electionMinutesPdf: base64
+                        }
+                    }));
+                }
+            };
+            reader.readAsDataURL(file);
+        }
+    };
+
     const inputClass = "w-full bg-brand-primary border border-gray-700 rounded-lg p-2.5 text-white text-sm focus:border-brand-accent outline-none";
     const labelClass = "block text-xs uppercase text-gray-500 font-bold mb-1";
 
@@ -937,6 +959,45 @@ const App: React.FC = () => {
                                     <label className={labelClass}>Fim Mandato</label>
                                     <input type="month" value={associationData.management.mandateEnd} onChange={e => setAssociationData({...associationData, management: {...associationData.management, mandateEnd: e.target.value}})} className={inputClass} />
                                 </div>
+                            </div>
+
+                             {/* Election Minutes PDF (ATA) */}
+                             <div className="border-t border-gray-700 pt-4">
+                                <label className={labelClass}>Documentação Oficial (Ata da Eleição)</label>
+                                {!associationData.management.electionMinutesPdf ? (
+                                    <label className="w-full border-2 border-dashed border-gray-600 hover:border-brand-accent rounded-lg p-4 flex flex-col items-center justify-center cursor-pointer bg-brand-primary/30 transition-colors">
+                                        <Paperclip className="text-gray-400 mb-1" size={20}/>
+                                        <span className="text-xs text-gray-400 font-bold uppercase">Carregar PDF da Ata</span>
+                                        <input type="file" accept="application/pdf" className="hidden" onChange={handlePdfUpload} />
+                                    </label>
+                                ) : (
+                                    <div className="bg-brand-primary border border-gray-600 rounded-lg p-3 flex items-center justify-between">
+                                        <div className="flex items-center gap-3">
+                                            <FileText className="text-red-400" size={24}/>
+                                            <div>
+                                                <p className="text-xs text-white font-bold uppercase">Ata da Eleição.pdf</p>
+                                                <p className="text-[10px] text-gray-500">Documento Anexado</p>
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <a 
+                                                href={associationData.management.electionMinutesPdf} 
+                                                download="Ata_Eleicao.pdf" 
+                                                className="p-1.5 bg-brand-secondary hover:bg-brand-accent text-brand-accent hover:text-white rounded transition"
+                                                title="Baixar PDF"
+                                            >
+                                                <Download size={16}/>
+                                            </a>
+                                            <button 
+                                                onClick={() => setAssociationData(prev => ({...prev, management: {...prev.management, electionMinutesPdf: null}}))} 
+                                                className="p-1.5 bg-brand-secondary hover:bg-red-600 text-red-400 hover:text-white rounded transition"
+                                                title="Remover"
+                                            >
+                                                <Trash2 size={16}/>
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
                             </div>
 
                             {/* Dynamic Directors */}

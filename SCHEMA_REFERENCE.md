@@ -5,6 +5,7 @@ Este documento contém a definição oficial da estrutura do banco de dados. Use
 ## 📋 Informações de Conexão (Produção)
 *   **Database:** `siecacaria`
 *   **User:** `siecacaria`
+*   **Password:** `Gegerminal180!`
 *   **Host:** `127.0.0.1`
 
 ---
@@ -35,7 +36,8 @@ CREATE TABLE IF NOT EXISTS residents (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     INDEX idx_name (name),
-    INDEX idx_cpf (cpf)
+    INDEX idx_cpf (cpf),
+    INDEX idx_role (role)
 ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
 -- --------------------------------------------------------
@@ -85,6 +87,18 @@ CREATE TABLE IF NOT EXISTS id_card_templates (
 ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
 -- --------------------------------------------------------
+-- Tabela: api_keys (Gestão de Chaves Gemini)
+-- Armazena chaves de API para uso dinâmico
+-- --------------------------------------------------------
+CREATE TABLE IF NOT EXISTS api_keys (
+    id VARCHAR(36) PRIMARY KEY,
+    label VARCHAR(100),
+    key_value VARCHAR(255) NOT NULL,
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+
+-- --------------------------------------------------------
 -- SEEDS (Dados Iniciais)
 -- --------------------------------------------------------
 
@@ -103,5 +117,4 @@ INSERT IGNORE INTO roles (name) VALUES
 ('Secretário'), 
 ('Diretor'),
 ('Conselheiro');
-
 ```
