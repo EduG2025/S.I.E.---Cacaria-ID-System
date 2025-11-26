@@ -1,8 +1,8 @@
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Sparkles, Upload, FileText, Download, ShieldCheck, User as UserIcon, Settings, Lock, LayoutTemplate, Image as ImageIcon, FileImage, BarChart3, Users, Search, Plus, Save, X, Building, Wifi, WifiOff, LogOut, Palette, Camera, Video, MessageSquare, Info, Menu } from 'lucide-react';
+import { Sparkles, Upload, FileText, Download, ShieldCheck, User as UserIcon, Settings, Lock, LayoutTemplate, Image as ImageIcon, FileImage, BarChart3, Users, Search, Plus, Save, X, Building, Wifi, WifiOff, LogOut, Palette, Camera, Video, MessageSquare, Info, Menu, Fingerprint, Wand2 } from 'lucide-react';
 import { Resident, ProcessingStatus, AppView, IDTemplate, PhotoSettings, User, SystemUser, AssociationData, CustomTemplate } from '@/types';
-import { analyzeDocumentText, editResidentPhoto, fetchCompanyData } from '@/services/geminiService';
+import { analyzeDocumentText, editResidentPhoto, fetchCompanyData, generatePlaceholderAvatar, deepAnalyzeDocument } from '@/services/geminiService';
 import { api } from '@/services/api'; 
 import { IDCard } from '@/components/IDCard';
 import { TemplateEditor } from '@/components/TemplateEditor';
@@ -200,12 +200,19 @@ const App: React.FC = () => {
   const [photoSettings, setPhotoSettings] = useState<PhotoSettings>({ zoom: 1, x: 0, y: 0 });
 
   // --- AI & Camera Features State ---
+  const [studioMode, setStudioMode] = useState<'UPLOAD' | 'GENERATE'>('UPLOAD');
   const [uploadedPhotoBase64, setUploadedPhotoBase64] = useState<string | null>(null);
   const [uploadedPhotoMimeType, setUploadedPhotoMimeType] = useState<string>('image/jpeg');
+  
   // Base technical prompt for ID cards
   const baseEditPrompt = "Foto de identificação profissional (ID Card). Fundo branco sólido perfeito. Iluminação suave de estúdio, sem sombras no rosto. Rosto centralizado e nítido. Alta resolução. Aparência formal.";
   const [additionalPrompt, setAdditionalPrompt] = useState<string>("");
   
+  // Generation State
+  const [genPrompt, setGenPrompt] = useState('');
+  const [genSize, setGenSize] = useState<'1K' | '2K' | '4K'>('1K');
+  const [genRatio, setGenRatio] = useState('1:1');
+
   const [isCameraOpen, setIsCameraOpen] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -222,7 +229,6 @@ const App: React.FC = () => {
           if (videoRef.current) {
               videoRef.current.srcObject = stream;
           }
-          // Small timeout to ensure ref is attached after render if needed
           setTimeout(() => {
               if (videoRef.current) videoRef.current.srcObject = stream;
           }, 100);
@@ -343,6 +349,7 @@ const App: React.FC = () => {
       });
       setUploadedPhotoBase64(null);
       setAdditionalPrompt("");
+      setGenPrompt("");
       setPhotoSettings({ zoom: 1, x: 0, y: 0 });
       setView(AppView.ID_GENERATOR);
   }
@@ -395,6 +402,8 @@ const App: React.FC = () => {
                 rg: data.rg || prev.rg,
                 birthDate: data.birthDate || prev.birthDate
             }));
+            // Store for potential deep analysis
+            setUploadedPhotoBase64(base64); 
         } catch (error: any) {
             console.error(error);
             const msg = error?.message || 'Erro desconhecido';
@@ -404,6 +413,19 @@ const App: React.FC = () => {
         }
     }
   };
+
+  const handleDeepAnalyze = async () => {
+      if (!uploadedPhotoBase64) return alert("Escaneie ou carregue um documento primeiro.");
+      setStatus({ ...status, isAnalyzing: true, message: 'Realizando análise forense (Gemini 3 Pro)...' });
+      try {
+          const result = await deepAnalyzeDocument(uploadedPhotoBase64);
+          alert(`RELATÓRIO DE ANÁLISE:\n\n${result}`);
+      } catch (e) {
+          alert("Erro na análise profunda.");
+      } finally {
+          setStatus({ ...status, isAnalyzing: false, message: '' });
+      }
+  }
 
   const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
@@ -433,9 +455,8 @@ const App: React.FC = () => {
     } catch (err: any) {
       console.error(err);
       const msg = err?.message || 'Erro desconhecido';
-      
       if (msg.includes("API_KEY")) {
-          alert(`Erro de Configuração: Chave de API ausente no build. \n\nPor favor, acesse o terminal do VPS e execute:\n'npm run build' seguido de 'pm2 restart sie-backend'`);
+          alert(`Erro de Configuração: Chave de API ausente.`);
       } else {
           alert(`Erro na edição da imagem: ${msg}`);
       }
@@ -443,6 +464,23 @@ const App: React.FC = () => {
       setStatus({ ...status, isEditingPhoto: false, message: '' });
     }
   };
+
+  const handleGenerateAvatar = async () => {
+      if (!genPrompt) return alert("Por favor, descreva a pessoa para gerar o avatar.");
+      setStatus({ ...status, isEditingPhoto: true, message: 'Gerando Avatar com Gemini 3 Pro...' });
+      try {
+          const base64 = await generatePlaceholderAvatar(genPrompt, genSize, genRatio);
+          const rawBase64 = base64.split(',')[1];
+          setUploadedPhotoBase64(rawBase64);
+          setUploadedPhotoMimeType('image/png');
+          setResident(prev => ({ ...prev, photoUrl: base64 }));
+          setPhotoSettings({ zoom: 1, x: 0, y: 0 });
+      } catch (e: any) {
+          alert("Erro ao gerar imagem: " + e.message);
+      } finally {
+          setStatus({ ...status, isEditingPhoto: false, message: '' });
+      }
+  }
 
   const handlePrint = () => window.print();
 
@@ -723,15 +761,25 @@ const App: React.FC = () => {
                         </h3>
                         
                         {/* Scanner Input */}
-                        <div className="mb-6 bg-brand-primary/50 p-4 rounded-lg border border-dashed border-gray-600 hover:border-brand-accent transition-colors group">
+                        <div className="mb-4 bg-brand-primary/50 p-4 rounded-lg border border-dashed border-gray-600 hover:border-brand-accent transition-colors group">
                             <label className="cursor-pointer flex flex-col items-center gap-2">
                                 <div className="p-3 bg-brand-secondary rounded-full group-hover:bg-brand-accent/20 transition-colors">
                                     <Search className="text-gray-400 group-hover:text-brand-accent" size={24} />
                                 </div>
-                                <span className="text-xs text-gray-400 font-medium group-hover:text-white text-center">Escanear Documento (IA)</span>
+                                <span className="text-xs text-gray-400 font-medium group-hover:text-white text-center">Escanear Documento (OCR)</span>
                                 <input type="file" accept="image/*" onChange={handleDocumentScan} className="hidden" />
                             </label>
                         </div>
+
+                        {/* Deep Analysis Button */}
+                        {uploadedPhotoBase64 && (
+                            <Tooltip text="Usa Gemini 3 Pro para buscar sinais de fraude, datas alteradas ou fontes suspeitas no documento.">
+                                <button onClick={handleDeepAnalyze} disabled={status.isAnalyzing} className="w-full bg-red-900/30 hover:bg-red-900/50 border border-red-800/50 text-red-300 py-2 rounded-lg text-xs flex items-center justify-center gap-2 mb-6 transition-all">
+                                    {status.isAnalyzing ? <div className="animate-spin w-3 h-3 border-2 border-white border-t-transparent rounded-full"/> : <Fingerprint size={14} />}
+                                    Verificar Autenticidade (IA Pro)
+                                </button>
+                            </Tooltip>
+                        )}
 
                         {/* Form Fields */}
                         <div className="space-y-4">
@@ -894,132 +942,178 @@ const App: React.FC = () => {
                      
                     {/* Photo Studio */}
                     <div className="bg-brand-secondary rounded-xl p-6 border border-brand-secondary shadow-lg">
-                        <h3 className="text-white font-medium flex items-center gap-2 text-sm uppercase tracking-wide mb-6">
-                            <Sparkles size={16} className="text-brand-accent" /> Estúdio Fotográfico IA
-                        </h3>
-
-                        <div className="flex flex-col md:flex-row gap-6">
-                            {/* Upload Area / Camera */}
-                            <div className="flex-1">
-                                {!uploadedPhotoBase64 && !isCameraOpen ? (
-                                    <div className="h-48 w-full flex gap-2">
-                                        <label className="flex-1 border-2 border-dashed border-gray-600 hover:border-brand-accent rounded-xl flex flex-col items-center justify-center cursor-pointer transition-colors bg-brand-primary/30">
-                                            <Upload className="text-gray-500 mb-2" size={32} />
-                                            <span className="text-xs text-gray-400 font-bold uppercase text-center">Carregar Foto</span>
-                                            <input type="file" accept="image/*" onChange={handlePhotoUpload} className="hidden" />
-                                        </label>
-                                        <button onClick={handleStartCamera} className="w-20 border-2 border-dashed border-gray-600 hover:border-brand-accent rounded-xl flex flex-col items-center justify-center cursor-pointer transition-colors bg-brand-primary/30">
-                                            <Camera className="text-gray-500 mb-2" size={24} />
-                                            <span className="text-[10px] text-gray-400 font-bold uppercase text-center">Câmera</span>
-                                        </button>
-                                    </div>
-                                ) : isCameraOpen ? (
-                                     <div className="relative h-48 w-full bg-black rounded-xl overflow-hidden border border-gray-700 flex flex-col items-center justify-center">
-                                        <video ref={videoRef} autoPlay playsInline className="w-full h-full object-cover" />
-                                        <div className="absolute bottom-2 flex gap-2">
-                                            <button onClick={handleCapturePhoto} className="bg-white text-black px-4 py-1 rounded-full text-xs font-bold shadow-lg hover:bg-gray-200">
-                                                Capturar
-                                            </button>
-                                            <button onClick={handleStopCamera} className="bg-red-600 text-white px-3 py-1 rounded-full text-xs font-bold shadow-lg hover:bg-red-500">
-                                                Cancelar
-                                            </button>
-                                        </div>
-                                     </div>
-                                ) : (
-                                    <div className="relative h-48 w-full bg-black rounded-xl overflow-hidden border border-gray-700 group">
-                                        <img src={`data:${uploadedPhotoMimeType};base64,${uploadedPhotoBase64}`} className="w-full h-full object-contain" alt="Upload" />
-                                        <button 
-                                            onClick={() => setUploadedPhotoBase64(null)} 
-                                            className="absolute top-2 right-2 bg-black/50 hover:bg-red-500 text-white p-1.5 rounded-full backdrop-blur-sm transition-colors"
-                                        >
-                                            <X size={14} />
-                                        </button>
-                                    </div>
-                                )}
-                            </div>
-
-                            {/* Controls */}
-                            <div className="flex-1 space-y-4">
-                                <div className="bg-brand-primary/50 p-4 rounded-lg border border-gray-700">
-                                    <p className="text-[10px] text-gray-400 uppercase font-bold mb-3">Ajustes Manuais</p>
-                                    
-                                    <div className="space-y-3">
-                                        <div>
-                                            <div className="flex justify-between text-[10px] text-gray-500 mb-1">
-                                                <span>Zoom</span>
-                                                <span>{photoSettings.zoom.toFixed(1)}x</span>
-                                            </div>
-                                            <input 
-                                                type="range" min="0.5" max="3" step="0.1" 
-                                                value={photoSettings.zoom} 
-                                                onChange={e => setPhotoSettings({...photoSettings, zoom: parseFloat(e.target.value)})}
-                                                className="w-full h-1.5 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-brand-accent"
-                                            />
-                                        </div>
-                                        
-                                        <div className="grid grid-cols-2 gap-3">
-                                            <div>
-                                                <label className="text-[10px] text-gray-500 block mb-1">Posição X</label>
-                                                <input 
-                                                    type="number" 
-                                                    value={photoSettings.x} 
-                                                    onChange={e => setPhotoSettings({...photoSettings, x: parseInt(e.target.value)})}
-                                                    className="w-full bg-brand-primary border border-gray-600 rounded p-1 text-xs text-white"
-                                                />
-                                            </div>
-                                            <div>
-                                                <label className="text-[10px] text-gray-500 block mb-1">Posição Y</label>
-                                                <input 
-                                                    type="number" 
-                                                    value={photoSettings.y} 
-                                                    onChange={e => setPhotoSettings({...photoSettings, y: parseInt(e.target.value)})}
-                                                    className="w-full bg-brand-primary border border-gray-600 rounded p-1 text-xs text-white"
-                                                />
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                {uploadedPhotoBase64 && (
-                                    <div className="space-y-3">
-                                        <div className="bg-brand-primary/30 p-3 rounded border border-gray-600/50">
-                                            <p className="text-[10px] text-brand-accent font-bold mb-1 uppercase flex items-center gap-1">
-                                                <Info size={10}/> Padrão Aplicado (Auto)
-                                            </p>
-                                            <p className="text-[9px] text-gray-500 italic leading-tight">
-                                                "Fundo branco sólido, enquadramento de rosto oficial (3x4), iluminação de estúdio."
-                                            </p>
-                                        </div>
-
-                                        <div>
-                                            <label className="text-[10px] text-gray-400 flex items-center gap-1 mb-1 font-bold">
-                                                <MessageSquare size={10}/> Ajustes Específicos (Opcional)
-                                            </label>
-                                            <textarea 
-                                                value={additionalPrompt}
-                                                onChange={e => setAdditionalPrompt(e.target.value)}
-                                                placeholder="Ex: Corrigir olhos vermelhos, suavizar pele, remover óculos..."
-                                                className="w-full bg-brand-primary border border-gray-600 rounded p-2 text-xs text-white focus:border-brand-accent outline-none resize-none h-14"
-                                            />
-                                        </div>
-
-                                        <Tooltip text="Aplica o padrão oficial + seus ajustes específicos usando IA">
-                                            <button 
-                                                onClick={handleEditPhoto} 
-                                                disabled={status.isEditingPhoto}
-                                                className={`w-full py-3 rounded-lg font-bold text-sm flex items-center justify-center gap-2 shadow-lg transition-all ${status.isEditingPhoto ? 'bg-gray-700 text-gray-400 cursor-not-allowed' : 'bg-purple-600 hover:bg-purple-500 text-white'}`}
-                                            >
-                                                {status.isEditingPhoto ? (
-                                                    <><div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full"/> Processando...</>
-                                                ) : (
-                                                    <><Sparkles size={16} /> Gerar Foto Oficial</>
-                                                )}
-                                            </button>
-                                        </Tooltip>
-                                    </div>
-                                )}
+                        <div className="flex justify-between items-center mb-4">
+                            <h3 className="text-white font-medium flex items-center gap-2 text-sm uppercase tracking-wide">
+                                <Sparkles size={16} className="text-brand-accent" /> Estúdio Fotográfico IA
+                            </h3>
+                            <div className="flex bg-brand-primary rounded-lg p-1 gap-1">
+                                <button onClick={() => setStudioMode('UPLOAD')} className={`p-1.5 rounded ${studioMode === 'UPLOAD' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'}`} title="Upload/Câmera"><Upload size={14}/></button>
+                                <button onClick={() => setStudioMode('GENERATE')} className={`p-1.5 rounded ${studioMode === 'GENERATE' ? 'bg-purple-700 text-white' : 'text-gray-400 hover:text-white'}`} title="Gerar Avatar"><Wand2 size={14}/></button>
                             </div>
                         </div>
+
+                        {studioMode === 'UPLOAD' ? (
+                            <div className="flex flex-col md:flex-row gap-6">
+                                {/* Upload Area / Camera */}
+                                <div className="flex-1">
+                                    {!uploadedPhotoBase64 && !isCameraOpen ? (
+                                        <div className="h-48 w-full flex gap-2">
+                                            <label className="flex-1 border-2 border-dashed border-gray-600 hover:border-brand-accent rounded-xl flex flex-col items-center justify-center cursor-pointer transition-colors bg-brand-primary/30">
+                                                <Upload className="text-gray-500 mb-2" size={32} />
+                                                <span className="text-xs text-gray-400 font-bold uppercase text-center">Carregar Foto</span>
+                                                <input type="file" accept="image/*" onChange={handlePhotoUpload} className="hidden" />
+                                            </label>
+                                            <button onClick={handleStartCamera} className="w-20 border-2 border-dashed border-gray-600 hover:border-brand-accent rounded-xl flex flex-col items-center justify-center cursor-pointer transition-colors bg-brand-primary/30">
+                                                <Camera className="text-gray-500 mb-2" size={24} />
+                                                <span className="text-[10px] text-gray-400 font-bold uppercase text-center">Câmera</span>
+                                            </button>
+                                        </div>
+                                    ) : isCameraOpen ? (
+                                         <div className="relative h-48 w-full bg-black rounded-xl overflow-hidden border border-gray-700 flex flex-col items-center justify-center">
+                                            <video ref={videoRef} autoPlay playsInline className="w-full h-full object-cover" />
+                                            <div className="absolute bottom-2 flex gap-2">
+                                                <button onClick={handleCapturePhoto} className="bg-white text-black px-4 py-1 rounded-full text-xs font-bold shadow-lg hover:bg-gray-200">
+                                                    Capturar
+                                                </button>
+                                                <button onClick={handleStopCamera} className="bg-red-600 text-white px-3 py-1 rounded-full text-xs font-bold shadow-lg hover:bg-red-500">
+                                                    Cancelar
+                                                </button>
+                                            </div>
+                                         </div>
+                                    ) : (
+                                        <div className="relative h-48 w-full bg-black rounded-xl overflow-hidden border border-gray-700 group">
+                                            <img src={`data:${uploadedPhotoMimeType};base64,${uploadedPhotoBase64}`} className="w-full h-full object-contain" alt="Upload" />
+                                            <button 
+                                                onClick={() => setUploadedPhotoBase64(null)} 
+                                                className="absolute top-2 right-2 bg-black/50 hover:bg-red-500 text-white p-1.5 rounded-full backdrop-blur-sm transition-colors"
+                                            >
+                                                <X size={14} />
+                                            </button>
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* Controls */}
+                                <div className="flex-1 space-y-4">
+                                    <div className="bg-brand-primary/50 p-4 rounded-lg border border-gray-700">
+                                        <p className="text-[10px] text-gray-400 uppercase font-bold mb-3">Ajustes Manuais</p>
+                                        
+                                        <div className="space-y-3">
+                                            <div>
+                                                <div className="flex justify-between text-[10px] text-gray-500 mb-1">
+                                                    <span>Zoom</span>
+                                                    <span>{photoSettings.zoom.toFixed(1)}x</span>
+                                                </div>
+                                                <input 
+                                                    type="range" min="0.5" max="3" step="0.1" 
+                                                    value={photoSettings.zoom} 
+                                                    onChange={e => setPhotoSettings({...photoSettings, zoom: parseFloat(e.target.value)})}
+                                                    className="w-full h-1.5 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-brand-accent"
+                                                />
+                                            </div>
+                                            
+                                            <div className="grid grid-cols-2 gap-3">
+                                                <div>
+                                                    <label className="text-[10px] text-gray-500 block mb-1">Posição X</label>
+                                                    <input 
+                                                        type="number" 
+                                                        value={photoSettings.x} 
+                                                        onChange={e => setPhotoSettings({...photoSettings, x: parseInt(e.target.value)})}
+                                                        className="w-full bg-brand-primary border border-gray-600 rounded p-1 text-xs text-white"
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <label className="text-[10px] text-gray-500 block mb-1">Posição Y</label>
+                                                    <input 
+                                                        type="number" 
+                                                        value={photoSettings.y} 
+                                                        onChange={e => setPhotoSettings({...photoSettings, y: parseInt(e.target.value)})}
+                                                        className="w-full bg-brand-primary border border-gray-600 rounded p-1 text-xs text-white"
+                                                    />
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {uploadedPhotoBase64 && (
+                                        <div className="space-y-3">
+                                            <div className="bg-brand-primary/30 p-3 rounded border border-gray-600/50">
+                                                <p className="text-[10px] text-brand-accent font-bold mb-1 uppercase flex items-center gap-1">
+                                                    <Info size={10}/> Padrão Aplicado (Auto)
+                                                </p>
+                                                <p className="text-[9px] text-gray-500 italic leading-tight">
+                                                    "Fundo branco sólido, enquadramento de rosto oficial (3x4), iluminação de estúdio."
+                                                </p>
+                                            </div>
+
+                                            <div>
+                                                <label className="text-[10px] text-gray-400 flex items-center gap-1 mb-1 font-bold">
+                                                    <MessageSquare size={10}/> Ajustes Específicos (Opcional)
+                                                </label>
+                                                <textarea 
+                                                    value={additionalPrompt}
+                                                    onChange={e => setAdditionalPrompt(e.target.value)}
+                                                    placeholder="Ex: Corrigir olhos vermelhos, suavizar pele, remover óculos..."
+                                                    className="w-full bg-brand-primary border border-gray-600 rounded p-2 text-xs text-white focus:border-brand-accent outline-none resize-none h-14"
+                                                />
+                                            </div>
+
+                                            <Tooltip text="Aplica o padrão oficial + seus ajustes específicos usando IA">
+                                                <button 
+                                                    onClick={handleEditPhoto} 
+                                                    disabled={status.isEditingPhoto}
+                                                    className={`w-full py-3 rounded-lg font-bold text-sm flex items-center justify-center gap-2 shadow-lg transition-all ${status.isEditingPhoto ? 'bg-gray-700 text-gray-400 cursor-not-allowed' : 'bg-purple-600 hover:bg-purple-500 text-white'}`}
+                                                >
+                                                    {status.isEditingPhoto ? (
+                                                        <><div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full"/> Processando...</>
+                                                    ) : (
+                                                        <><Sparkles size={16} /> Gerar Foto Oficial</>
+                                                    )}
+                                                </button>
+                                            </Tooltip>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        ) : (
+                            /* --- GENERATE MODE --- */
+                            <div className="bg-brand-primary/20 p-4 rounded-lg border border-gray-700">
+                                <div className="mb-4">
+                                    <label className="text-xs text-gray-400 font-bold uppercase mb-2 block">Descrição do Residente</label>
+                                    <textarea 
+                                        value={genPrompt}
+                                        onChange={e => setGenPrompt(e.target.value)}
+                                        placeholder="Ex: Homem idoso, cabelos grisalhos curtos, óculos de leitura, expressão séria, camisa social azul clara."
+                                        className="w-full bg-brand-primary border border-gray-600 rounded p-3 text-sm text-white focus:border-purple-500 outline-none resize-none h-24"
+                                    />
+                                </div>
+                                <div className="grid grid-cols-2 gap-4 mb-6">
+                                    <div>
+                                        <label className="text-[10px] text-gray-500 uppercase font-bold mb-1 block">Qualidade</label>
+                                        <select value={genSize} onChange={e => setGenSize(e.target.value as any)} className="w-full bg-brand-primary border border-gray-600 rounded p-2 text-sm text-white">
+                                            <option value="1K">1K (Padrão)</option>
+                                            <option value="2K">2K (Alta)</option>
+                                            <option value="4K">4K (Ultra)</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="text-[10px] text-gray-500 uppercase font-bold mb-1 block">Proporção</label>
+                                        <select value={genRatio} onChange={e => setGenRatio(e.target.value)} className="w-full bg-brand-primary border border-gray-600 rounded p-2 text-sm text-white">
+                                            <option value="1:1">1:1 (Quadrada)</option>
+                                            <option value="3:4">3:4 (Retrato)</option>
+                                            <option value="4:3">4:3 (Paisagem)</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <button 
+                                    onClick={handleGenerateAvatar}
+                                    disabled={status.isEditingPhoto}
+                                    className="w-full bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 text-white font-bold py-3 rounded-lg shadow-lg flex items-center justify-center gap-2"
+                                >
+                                    {status.isEditingPhoto ? "Gerando..." : <><Wand2 size={18}/> Gerar Avatar (Gemini 3 Pro)</>}
+                                </button>
+                            </div>
+                        )}
                     </div>
                 </div>
             </div>

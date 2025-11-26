@@ -1,3 +1,4 @@
+
 import { Resident, SystemUser, AssociationData, CustomTemplate, ApiKey } from '@/types';
 
 // Detect API URL

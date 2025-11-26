@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { BarChart3, AlertTriangle, CheckCircle } from 'lucide-react';
 import { Resident } from '@/types';
