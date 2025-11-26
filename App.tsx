@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, useEffect } from 'react';
 import { Sparkles, Upload, FileText, Download, ShieldCheck, User as UserIcon, Settings, Lock, LayoutTemplate, Image as ImageIcon, FileImage, BarChart3, Users, Search, Plus, Save, X, Building, Wifi, WifiOff, LogOut, Palette, Camera, Video } from 'lucide-react';
 import { Resident, ProcessingStatus, AppView, IDTemplate, PhotoSettings, User, SystemUser, AssociationData, CustomTemplate } from '@/types';
