@@ -347,9 +347,10 @@ const App: React.FC = () => {
                 rg: data.rg || prev.rg,
                 birthDate: data.birthDate || prev.birthDate
             }));
-        } catch (error) {
+        } catch (error: any) {
             console.error(error);
-            alert('Falha ao analisar documento. Verifique a chave de API e o formato da imagem.');
+            const msg = error?.message || 'Erro desconhecido';
+            alert(`Falha ao analisar documento: ${msg}`);
         } finally {
             setStatus({ ...status, isAnalyzing: false, message: '' });
         }
@@ -375,9 +376,10 @@ const App: React.FC = () => {
       setResident(prev => ({ ...prev, photoUrl: newImage }));
       setUploadedPhotoBase64(newImage.split(',')[1]); 
       setUploadedPhotoMimeType('image/png'); // Gemini usually returns PNG/JPEG, but let's assume valid base64
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      alert("Erro na edição da imagem. Verifique a API Key.");
+      const msg = err?.message || 'Erro desconhecido';
+      alert(`Erro na edição da imagem: ${msg}`);
     } finally {
       setStatus({ ...status, isEditingPhoto: false, message: '' });
     }
@@ -908,6 +910,7 @@ const App: React.FC = () => {
                         </button>
                       </Tooltip>
                   </form>
+                  <p className="text-center text-[10px] text-gray-600 mt-4">Dica: admin / admin</p>
               </div>
           </div>
       )
@@ -939,6 +942,12 @@ const App: React.FC = () => {
           <div className="mt-2">
             <p className="text-xs text-white font-medium">{currentUser?.name}</p>
             <p className="text-[10px] text-brand-accent opacity-80 uppercase tracking-wider">{currentUser?.role === 'ADMIN' ? 'Administrador' : 'Operador'}</p>
+            <div className="flex items-center gap-1 mt-1">
+                {isBackendConnected ? <Wifi size={10} className="text-green-500"/> : <WifiOff size={10} className="text-orange-500"/>}
+                <span className={`text-[9px] font-mono ${isBackendConnected ? 'text-green-600' : 'text-orange-500'}`}>
+                    {isBackendConnected ? 'Online (MySQL)' : 'Modo Offline (Local)'}
+                </span>
+            </div>
           </div>
         </div>
         <nav className="flex-1 p-4 space-y-2">

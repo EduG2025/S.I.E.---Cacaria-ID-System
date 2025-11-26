@@ -1,11 +1,18 @@
 import { GoogleGenAI, Type } from "@google/genai";
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+// Helper para instanciar a IA apenas quando necessário e verificar a chave
+const getAI = () => {
+  const apiKey = process.env.API_KEY;
+  if (!apiKey || apiKey.includes("API_KEY_HERE")) {
+    throw new Error("Chave de API do Gemini não configurada. Verifique o arquivo .env e rode 'npm run build'.");
+  }
+  return new GoogleGenAI({ apiKey });
+};
 
 // --- 1. Fast Text Analysis (Flash) ---
-// Used to parse document text or autofill form data
 export const analyzeDocumentText = async (base64Image: string, mimeType: string = 'image/jpeg'): Promise<any> => {
   try {
+    const ai = getAI();
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash',
       contents: {
@@ -42,11 +49,11 @@ export const analyzeDocumentText = async (base64Image: string, mimeType: string 
 };
 
 // --- 2. Image Editing (Nano Banana / Flash Image) ---
-// Used to remove background or apply filters to the resident's photo
 export const editResidentPhoto = async (base64Image: string, prompt: string, mimeType: string = 'image/jpeg'): Promise<string> => {
   try {
+    const ai = getAI();
     const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash-image', // "Nano Banana" for editing
+      model: 'gemini-2.5-flash-image', 
       contents: {
         parts: [
           {
@@ -56,22 +63,18 @@ export const editResidentPhoto = async (base64Image: string, prompt: string, mim
             },
           },
           {
-            text: prompt, // e.g., "Change background to white studio backdrop"
+            text: prompt,
           },
         ],
       },
-      config: {
-          // Nano banana supports direct image output via generateContent
-      }
     });
 
-    // Extract image from response
     for (const part of response.candidates?.[0]?.content?.parts || []) {
       if (part.inlineData) {
         return `data:image/png;base64,${part.inlineData.data}`;
       }
     }
-    throw new Error("No image generated");
+    throw new Error("A IA não retornou nenhuma imagem gerada.");
   } catch (error) {
     console.error("Error editing photo:", error);
     throw error;
@@ -79,11 +82,11 @@ export const editResidentPhoto = async (base64Image: string, prompt: string, mim
 };
 
 // --- 3. Image Generation (Pro Image) ---
-// Used if the user wants to generate a placeholder or artistic avatar
 export const generatePlaceholderAvatar = async (description: string, size: '1K' | '2K' | '4K', aspectRatio: string = '1:1'): Promise<string> => {
   try {
+    const ai = getAI();
     const response = await ai.models.generateContent({
-      model: 'gemini-3-pro-image-preview', // High quality generation maintained as requested
+      model: 'gemini-3-pro-image-preview',
       contents: {
         parts: [{ text: description }]
       },
@@ -108,9 +111,9 @@ export const generatePlaceholderAvatar = async (description: string, size: '1K' 
 };
 
 // --- 4. Deep Analysis (Flash) ---
-// Used for security checks on documents - Standardized to Flash 2.5
 export const deepAnalyzeDocument = async (base64Image: string): Promise<string> => {
     try {
+        const ai = getAI();
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash',
             contents: {
@@ -128,9 +131,9 @@ export const deepAnalyzeDocument = async (base64Image: string): Promise<string> 
 }
 
 // --- 5. Census Search (Search Grounding) ---
-// Used to find public info about a resident or address
 export const searchPublicData = async (query: string): Promise<any> => {
   try {
+    const ai = getAI();
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash",
       contents: `Search for public information about: "${query}" in the region of Cacaria, Rio de Janeiro (or general Brazil if specific logic applies). 
@@ -138,11 +141,9 @@ export const searchPublicData = async (query: string): Promise<any> => {
       Return the data in JSON format with keys: address, potentialName, zipcode, notes.`,
       config: {
         tools: [{googleSearch: {}}],
-        // Note: responseMimeType is NOT supported with googleSearch, so we parse manually
       },
     });
 
-    // Extract JSON from markdown code block if present, or just the text
     const text = response.text || "{}";
     const jsonMatch = text.match(/```json\n([\s\S]*?)\n```/) || text.match(/\{[\s\S]*\}/);
     
@@ -158,9 +159,9 @@ export const searchPublicData = async (query: string): Promise<any> => {
 };
 
 // --- 6. Company Data Search (CNPJ) ---
-// Uses Google Search to find company details based on CNPJ
 export const fetchCompanyData = async (cnpj: string): Promise<any> => {
   try {
+    const ai = getAI();
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash",
       contents: `Search for the Brazilian company with CNPJ: "${cnpj}". 
