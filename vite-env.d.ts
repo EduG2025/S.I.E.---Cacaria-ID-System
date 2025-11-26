@@ -10,9 +10,9 @@ interface ImportMeta {
   readonly env: ImportMetaEnv;
 }
 
-declare var process: {
-  env: {
+declare namespace NodeJS {
+  interface ProcessEnv {
     API_KEY: string;
     [key: string]: string | undefined;
   }
-};
+}

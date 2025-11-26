@@ -4,32 +4,36 @@ import { Resident, IDTemplate, PhotoSettings, AssociationData, CustomTemplate } 
 interface IDCardProps {
   resident: Resident;
   template: IDTemplate;
-  customTemplateData?: CustomTemplate; // Dados do template personalizado
+  customTemplateData?: CustomTemplate;
   photoSettings: PhotoSettings;
   organizationLogo: string | null;
   associationData?: AssociationData;
   idRef?: React.RefObject<HTMLDivElement>;
   onUpdate?: (field: keyof Resident, value: string) => void;
   onPhotoChange?: (settings: PhotoSettings) => void;
+  isReadOnly?: boolean; // New prop for printing/exporting
 }
 
-export const IDCard: React.FC<IDCardProps> = ({ resident, template, customTemplateData, photoSettings, organizationLogo, associationData, idRef, onUpdate, onPhotoChange }) => {
+export const IDCard: React.FC<IDCardProps> = ({ 
+    resident, template, customTemplateData, photoSettings, organizationLogo, 
+    associationData, idRef, onUpdate, onPhotoChange, isReadOnly = false 
+}) => {
   
-  // Use association data or defaults
+  // --- Helper for Association Data ---
   const assocName = associationData?.name || "Associação de Moradores";
   const assocLocation = associationData?.address?.city && associationData?.address?.state 
     ? `${associationData.address.city} - ${associationData.address.state}`
     : "Cacaria - Piraí - RJ";
   const assocFullLocation = associationData?.address?.city ? `de ${associationData.address.city} - ${associationData.address.state}` : "de Cacaria - Piraí - RJ";
 
-  // Footer Data (Address & CNPJ)
+  // --- Footer Data ---
   const footerAddress = associationData?.address?.street 
     ? `${associationData.address.street}, ${associationData.address.number} - ${associationData.address.city}/${associationData.address.state}` 
     : "Endereço da Sede";
   const footerCNPJ = associationData?.cnpj ? `CNPJ: ${associationData.cnpj}` : "";
   const footerText = `${footerAddress} ${footerCNPJ ? '• ' + footerCNPJ : ''}`;
 
-  // Calculate Mandate Text
+  // --- Date Formatting ---
   const formatDate = (dateStr: string) => {
     if(!dateStr) return '';
     const [year, month] = dateStr.split('-');
@@ -41,220 +45,124 @@ export const IDCard: React.FC<IDCardProps> = ({ resident, template, customTempla
     ? `Mandato: ${formatDate(associationData.management.mandateStart)} a ${formatDate(associationData.management.mandateEnd)}`
     : "Mandato: Nov 2025 / 2027";
 
-  // Helper to handle input changes
-  const handleChange = (field: keyof Resident, e: React.ChangeEvent<HTMLInputElement>) => {
-    if (onUpdate) {
-        onUpdate(field, e.target.value);
-    }
+  // --- Editable Field Component ---
+  const EditableField = ({ field, value, placeholder, className, style }: { field?: keyof Resident, value: string, placeholder?: string, className?: string, style?: React.CSSProperties }) => {
+      if (isReadOnly) {
+          return (
+              <div className={`${className} flex items-center`} style={{ ...style, border: 'none', background: 'transparent' }}>
+                  {value || placeholder}
+              </div>
+          );
+      }
+      return (
+          <input 
+            value={value}
+            onChange={(e) => onUpdate && field && onUpdate(field, e.target.value)}
+            placeholder={placeholder}
+            className={className}
+            style={style}
+          />
+      );
   };
 
-  // Photo Interaction Handlers
+  // --- Photo Interaction ---
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
 
   const handleWheel = (e: React.WheelEvent) => {
-      if (!onPhotoChange) return;
-      e.preventDefault();
-      e.stopPropagation(); // Prevent page scroll
-      
+      if (!onPhotoChange || isReadOnly) return;
+      e.preventDefault(); e.stopPropagation();
       const delta = -e.deltaY * 0.001;
       const newZoom = Math.min(Math.max(photoSettings.zoom + delta, 0.5), 3);
-      
       onPhotoChange({ ...photoSettings, zoom: newZoom });
   };
 
   const handleMouseDown = (e: React.MouseEvent) => {
-      if (!onPhotoChange) return;
+      if (!onPhotoChange || isReadOnly) return;
       setIsDragging(true);
       setDragStart({ x: e.clientX, y: e.clientY });
   };
 
   const handleMouseMove = (e: React.MouseEvent) => {
-      if (!isDragging || !onPhotoChange) return;
-      
+      if (!isDragging || !onPhotoChange || isReadOnly) return;
       const dx = (e.clientX - dragStart.x);
       const dy = (e.clientY - dragStart.y);
-      
-      // Adjust sensitivity based on zoom level (inverse)
-      // Higher zoom = slower movement for precision
       const speed = 1 / photoSettings.zoom; 
-
-      onPhotoChange({
-          ...photoSettings,
-          x: photoSettings.x + (dx * speed),
-          y: photoSettings.y + (dy * speed)
-      });
-      
+      onPhotoChange({ ...photoSettings, x: photoSettings.x + (dx * speed), y: photoSettings.y + (dy * speed) });
       setDragStart({ x: e.clientX, y: e.clientY });
   };
 
-  const handleMouseUp = () => {
-      setIsDragging(false);
-  };
+  const renderPhoto = () => (
+    <div 
+        className={`w-full h-full overflow-hidden relative bg-gray-200 ${!isReadOnly && onPhotoChange ? 'cursor-move' : ''} group`}
+        onWheel={handleWheel}
+        onMouseDown={handleMouseDown}
+        onMouseMove={handleMouseMove}
+        onMouseUp={() => setIsDragging(false)}
+        onMouseLeave={() => setIsDragging(false)}
+    >
+      {resident.photoUrl ? (
+        <img 
+            src={resident.photoUrl} 
+            alt="Resident" 
+            className="w-full h-full object-cover transition-transform origin-center pointer-events-none"
+            style={{ transform: `scale(${photoSettings.zoom}) translate(${photoSettings.x}px, ${photoSettings.y}px)` }}
+        />
+      ) : (
+        <div className="w-full h-full flex items-center justify-center text-gray-400 text-xs text-center p-1">Sem Foto</div>
+      )}
+    </div>
+  );
 
-  const handleMouseLeave = () => {
-      setIsDragging(false);
-  };
-
-  // AMC Logo Component
   const AmcLogo = ({ className }: { className?: string }) => (
     <div className={`rounded-full bg-white flex items-center justify-center relative overflow-hidden ${organizationLogo ? '' : 'border-4 border-blue-800'} ${className}`}>
         {organizationLogo ? (
             <img src={organizationLogo} alt="Logo Oficial" className="w-full h-full object-contain" />
         ) : (
-            <>
-                <div className="absolute inset-0 border-2 border-green-500 rounded-full m-1"></div>
-                <div className="text-center z-10">
-                    <h1 className="text-blue-900 font-bold tracking-tighter leading-none" style={{ fontSize: '1.5em' }}>AMC</h1>
-                </div>
-                <div className="absolute bottom-2 w-full h-1/3 bg-transparent flex justify-center">
-                    <div className="w-8 h-8 border-b-4 border-blue-900 rounded-full"></div>
-                </div>
-            </>
+            <div className="text-center z-10"><h1 className="text-blue-900 font-bold">AMC</h1></div>
         )}
     </div>
   );
 
-  // Common Photo Render
-  const renderPhoto = () => (
-    <div 
-        className={`w-full h-full overflow-hidden relative bg-gray-200 ${onPhotoChange ? 'cursor-move' : ''} group`}
-        onWheel={handleWheel}
-        onMouseDown={handleMouseDown}
-        onMouseMove={handleMouseMove}
-        onMouseUp={handleMouseUp}
-        onMouseLeave={handleMouseLeave}
-    >
-      {resident.photoUrl ? (
-        <>
-            <img 
-                src={resident.photoUrl} 
-                alt="Resident" 
-                className="w-full h-full object-cover transition-transform origin-center select-none pointer-events-none" // Disable pointer events on img to prevent ghost dragging
-                style={{
-                    transform: `scale(${photoSettings.zoom}) translate(${photoSettings.x}px, ${photoSettings.y}px)`
-                }}
-            />
-            {onPhotoChange && (
-                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors pointer-events-none border border-transparent group-hover:border-white/30 flex items-center justify-center">
-                    {/* Visual hint only on hover */}
-                </div>
-            )}
-        </>
-      ) : (
-        <div className="w-full h-full flex items-center justify-center text-gray-400 text-xs text-center p-1">
-          Sem Foto
-        </div>
-      )}
-    </div>
-  );
-
-  // Common Input Style Helper
   const inputBaseClass = "bg-transparent border border-transparent hover:border-gray-300 focus:border-blue-500 focus:bg-white/20 outline-none w-full transition-colors rounded px-0.5";
 
-  // Watermark Render
-  const Watermark = () => {
-    if (!organizationLogo) return null;
-    return (
-        <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-0 opacity-10">
-            <img src={organizationLogo} className="w-48 h-48 object-contain grayscale" alt="" />
-        </div>
-    );
-  };
+  // --- Templates ---
 
-  /* --- TEMPLATE 4: CUSTOM (DYNAMIC) --- */
   if (template === 'CUSTOM' && customTemplateData) {
       return (
-          <div 
-            ref={idRef} 
-            className="relative overflow-hidden shadow-2xl bg-white select-none print:shadow-none"
-            style={{ width: customTemplateData.width, height: customTemplateData.height }}
-          >
-              {/* Background */}
-              {customTemplateData.backgroundUrl && (
-                  <img src={customTemplateData.backgroundUrl} className="absolute inset-0 w-full h-full object-cover z-0" alt="bg" />
-              )}
+          <div ref={idRef} className="relative overflow-hidden shadow-2xl bg-white select-none print:shadow-none"
+            style={{ width: customTemplateData.width, height: customTemplateData.height }}>
+              {customTemplateData.backgroundUrl && <img src={customTemplateData.backgroundUrl} className="absolute inset-0 w-full h-full object-cover z-0" alt="bg" />}
+              {!customTemplateData.backgroundUrl && organizationLogo && <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-0 opacity-10"><img src={organizationLogo} className="w-48 h-48 object-contain grayscale" /></div>}
               
-              {!customTemplateData.backgroundUrl && <Watermark />}
-
-              {/* Elements */}
               {customTemplateData.elements.map(el => {
-                  if (el.type === 'photo') {
-                      return (
-                          <div 
-                            key={el.id} 
-                            style={{ left: el.x, top: el.y, width: el.width, height: el.height }}
-                            className="absolute z-10 overflow-hidden bg-gray-200 border border-gray-400"
-                          >
-                              {renderPhoto()}
-                          </div>
-                      );
-                  }
-
-                  // Handle Text or Fields
+                  if (el.type === 'photo') return (
+                      <div key={el.id} style={{ left: el.x, top: el.y, width: el.width, height: el.height }} className="absolute z-10 overflow-hidden bg-gray-200 border border-gray-400">{renderPhoto()}</div>
+                  );
+                  
                   let content = el.content;
                   if (el.type === 'field' && el.field) {
-                      // Map fields
                       if (el.field === 'mandate') content = mandateText;
                       else if (el.field === 'associationName') content = assocName;
-                      else {
-                          // Editable Resident Fields
-                          const value = resident[el.field as keyof Resident] || '';
-                          return (
-                              <input
-                                key={el.id}
-                                value={value}
-                                onChange={(e) => handleChange(el.field as keyof Resident, e)}
-                                style={{
-                                    left: el.x, 
-                                    top: el.y, 
-                                    width: el.width,
-                                    fontSize: el.fontSize,
-                                    fontFamily: el.fontFamily,
-                                    color: el.color,
-                                    fontWeight: el.fontWeight,
-                                    textAlign: el.textAlign,
-                                    zIndex: el.zIndex
-                                }}
-                                className="absolute bg-transparent border-none outline-none focus:bg-white/30"
-                              />
-                          );
-                      }
+                      else return (
+                          <EditableField key={el.id} field={el.field as keyof Resident} value={resident[el.field as keyof Resident] || ''}
+                            style={{ left: el.x, top: el.y, width: el.width, fontSize: el.fontSize, fontFamily: el.fontFamily, color: el.color, fontWeight: el.fontWeight, textAlign: el.textAlign, zIndex: el.zIndex, position: 'absolute' }}
+                            className="bg-transparent border-none outline-none" />
+                      );
                   }
-
-                  // Static Text
-                  return (
-                      <div
-                        key={el.id}
-                        style={{
-                            left: el.x, 
-                            top: el.y, 
-                            width: el.width,
-                            fontSize: el.fontSize,
-                            fontFamily: el.fontFamily,
-                            color: el.color,
-                            fontWeight: el.fontWeight,
-                            textAlign: el.textAlign,
-                            zIndex: el.zIndex
-                        }}
-                        className="absolute whitespace-pre-wrap"
-                      >
-                          {content}
-                      </div>
-                  );
+                  return <div key={el.id} style={{ left: el.x, top: el.y, width: el.width, fontSize: el.fontSize, fontFamily: el.fontFamily, color: el.color, fontWeight: el.fontWeight, textAlign: el.textAlign, zIndex: el.zIndex }} className="absolute whitespace-pre-wrap">{content}</div>;
               })}
           </div>
       );
   }
 
-  /* --- TEMPLATE 1: CLASSIC (Original Green) --- */
+  // --- Classic Template ---
   if (template === 'CLASSIC') {
     return (
       <div ref={idRef} className="w-[350px] h-[220px] bg-white rounded-xl overflow-hidden shadow-2xl relative flex flex-col print:shadow-none font-sans select-none border border-gray-100">
-        <Watermark />
+        {organizationLogo && <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-0 opacity-10"><img src={organizationLogo} className="w-48 h-48 object-contain grayscale" /></div>}
         <div className="absolute inset-0 opacity-10 pointer-events-none bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-green-500 to-transparent"></div>
         
-        {/* Top Bar - Compacted */}
         <div className="bg-green-700 h-10 w-full flex items-center justify-between px-3 py-1 relative z-10 shrink-0">
            <AmcLogo className="w-8 h-8 shadow-md bg-white rounded-full" />
            <div className="text-right">
@@ -263,77 +171,34 @@ export const IDCard: React.FC<IDCardProps> = ({ resident, template, customTempla
            </div>
         </div>
   
-        {/* Main Content */}
         <div className="flex flex-row p-2 gap-3 relative z-10 h-full">
-          {/* Photo Column */}
           <div className="flex flex-col items-center gap-1.5 mt-1">
-            <div className="w-20 h-24 border-2 border-green-700 rounded-md overflow-hidden relative shadow-sm bg-gray-100 shrink-0">
-              {renderPhoto()}
-            </div>
+            <div className="w-20 h-24 border-2 border-green-700 rounded-md overflow-hidden relative shadow-sm bg-gray-100 shrink-0">{renderPhoto()}</div>
             <div className="w-20">
-                <input 
-                    value={resident.role}
-                    onChange={(e) => handleChange('role', e)}
-                    className="text-[8px] font-bold text-white bg-green-800 rounded-full uppercase shadow-sm text-center w-full outline-none border border-transparent focus:border-white py-0.5"
-                />
+                <EditableField field="role" value={resident.role} className="text-[8px] font-bold text-white bg-green-800 rounded-full uppercase shadow-sm text-center w-full outline-none border border-transparent py-0.5"/>
             </div>
           </div>
   
-          {/* Data Column */}
           <div className="flex-1 flex flex-col justify-start gap-1 mt-0.5 min-w-0 pr-1">
             <div className="mb-0.5">
               <label className="block text-[6px] text-gray-500 uppercase font-bold leading-none mb-0.5">Nome Completo</label>
-              <input 
-                value={resident.name}
-                onChange={(e) => handleChange('name', e)}
-                placeholder="NOME DO MORADOR"
-                className={`${inputBaseClass} text-[11px] font-bold text-gray-900 leading-none font-mono uppercase truncate h-4`}
-              />
+              <EditableField field="name" value={resident.name} placeholder="NOME DO MORADOR" className={`${inputBaseClass} text-[11px] font-bold text-gray-900 leading-none font-mono uppercase truncate h-4`} />
             </div>
   
             <div className="grid grid-cols-2 gap-2">
-              <div>
-                <label className="block text-[6px] text-gray-500 uppercase font-bold leading-none mb-0.5">RG</label>
-                <input 
-                    value={resident.rg}
-                    onChange={(e) => handleChange('rg', e)}
-                    placeholder="00.000.000-0"
-                    className={`${inputBaseClass} text-[9px] font-semibold text-gray-800 font-mono h-3.5`}
-                />
-              </div>
-              <div>
-                 <label className="block text-[6px] text-gray-500 uppercase font-bold leading-none mb-0.5">Nascimento</label>
-                 <input 
-                    value={resident.birthDate}
-                    onChange={(e) => handleChange('birthDate', e)}
-                    placeholder="DD/MM/AAAA"
-                    className={`${inputBaseClass} text-[9px] font-semibold text-gray-800 font-mono h-3.5`}
-                 />
-              </div>
+              <div><label className="block text-[6px] text-gray-500 uppercase font-bold leading-none mb-0.5">RG</label><EditableField field="rg" value={resident.rg} placeholder="00.000.000-0" className={`${inputBaseClass} text-[9px] font-semibold text-gray-800 font-mono h-3.5`} /></div>
+              <div><label className="block text-[6px] text-gray-500 uppercase font-bold leading-none mb-0.5">Nascimento</label><EditableField field="birthDate" value={resident.birthDate} placeholder="DD/MM/AAAA" className={`${inputBaseClass} text-[9px] font-semibold text-gray-800 font-mono h-3.5`} /></div>
             </div>
   
-            <div>
-              <label className="block text-[6px] text-gray-500 uppercase font-bold leading-none mb-0.5">CPF</label>
-              <input 
-                    value={resident.cpf}
-                    onChange={(e) => handleChange('cpf', e)}
-                    placeholder="000.000.000-00"
-                    className={`${inputBaseClass} text-[9px] font-semibold text-gray-800 font-mono h-3.5`}
-              />
-            </div>
+            <div><label className="block text-[6px] text-gray-500 uppercase font-bold leading-none mb-0.5">CPF</label><EditableField field="cpf" value={resident.cpf} placeholder="000.000.000-00" className={`${inputBaseClass} text-[9px] font-semibold text-gray-800 font-mono h-3.5`} /></div>
             
              <div className="mt-auto pb-5 flex flex-col items-end">
                <p className="text-[6px] text-gray-400 italic mb-0.5 leading-none w-full text-right">Membro desde {resident.registrationDate}</p>
-               <input 
-                   value={mandateText} 
-                   readOnly 
-                   className="text-[6px] font-bold text-green-800 uppercase bg-green-100/60 px-1.5 rounded w-fit leading-tight text-right border-none bg-transparent"
-               />
+               <p className="text-[6px] font-bold text-green-800 uppercase bg-green-100/60 px-1.5 rounded w-fit leading-tight text-right">{mandateText}</p>
             </div>
           </div>
         </div>
         
-        {/* Footer stripe */}
         <div className="absolute bottom-0 w-full h-4 bg-yellow-400 flex items-center justify-center z-20 px-2 shrink-0 border-t border-yellow-500">
             <p className="text-[5px] font-bold text-black uppercase text-center w-full truncate leading-none tracking-wide">{footerText}</p>
         </div>
@@ -341,22 +206,16 @@ export const IDCard: React.FC<IDCardProps> = ({ resident, template, customTempla
     );
   }
 
-  /* --- TEMPLATE 2: MODERN (Dark Blue) --- */
+  // --- Modern Template ---
   if (template === 'MODERN') {
     return (
         <div ref={idRef} className="w-[350px] h-[220px] bg-slate-900 rounded-xl overflow-hidden shadow-2xl relative flex flex-row print:shadow-none text-white font-sans border border-slate-700 select-none">
-             {/* Left color bar */}
             <div className="w-22 h-full bg-blue-600 relative flex flex-col items-center pt-3 z-10 shrink-0 shadow-lg">
                  <AmcLogo className="w-10 h-10 shadow-lg mb-3 bg-white rounded-full p-0.5" />
-                 <div className="w-16 h-20 bg-white rounded-lg overflow-hidden border-2 border-white shadow-lg mx-auto mb-2">
-                    {renderPhoto()}
-                 </div>
-                 <div className="mt-auto mb-4 -rotate-90 whitespace-nowrap text-[7px] font-bold tracking-[0.2em] text-blue-200">
-                    IDENTIDADE
-                 </div>
+                 <div className="w-16 h-20 bg-white rounded-lg overflow-hidden border-2 border-white shadow-lg mx-auto mb-2">{renderPhoto()}</div>
+                 <div className="mt-auto mb-4 -rotate-90 whitespace-nowrap text-[7px] font-bold tracking-[0.2em] text-blue-200">IDENTIDADE</div>
             </div>
 
-            {/* Right content */}
             <div className="flex-1 p-3 flex flex-col relative z-10 overflow-hidden min-w-0">
                 <div className="absolute inset-0 flex items-center justify-center opacity-10 pointer-events-none z-0">
                     {organizationLogo && <img src={organizationLogo} className="w-48 h-48 object-contain grayscale invert" alt="" />}
@@ -364,50 +223,14 @@ export const IDCard: React.FC<IDCardProps> = ({ resident, template, customTempla
 
                 <div className="z-10 mb-2 border-b border-blue-500/30 pb-2">
                     <h3 className="text-blue-400 text-[8px] font-bold uppercase tracking-wider leading-tight mb-1 truncate">{assocName}<br/><span className="text-[6px] text-blue-300 font-normal">{assocFullLocation}</span></h3>
-                    <div>
-                      <input 
-                          value={resident.name}
-                          onChange={(e) => handleChange('name', e)}
-                          placeholder="NOME COMPLETO"
-                          className="bg-transparent border-none text-[12px] font-bold text-white uppercase leading-none w-full focus:ring-1 focus:ring-blue-500 rounded px-1 truncate h-5"
-                      />
-                    </div>
+                    <div><EditableField field="name" value={resident.name} placeholder="NOME COMPLETO" className="bg-transparent border-none text-[12px] font-bold text-white uppercase leading-none w-full rounded px-1 truncate h-5" /></div>
                 </div>
 
                 <div className="z-10 grid grid-cols-2 gap-x-2 gap-y-2 mt-1">
-                    <div>
-                        <h3 className="text-gray-500 text-[5px] font-bold uppercase leading-none mb-0.5">Função</h3>
-                        <input 
-                            value={resident.role}
-                            onChange={(e) => handleChange('role', e)}
-                            className="bg-blue-900/40 border border-blue-800/50 text-[8px] font-semibold text-blue-200 w-full rounded px-1.5 py-0.5 leading-tight truncate"
-                        />
-                    </div>
-                     <div>
-                        <h3 className="text-gray-500 text-[5px] font-bold uppercase leading-none mb-0.5">Nascimento</h3>
-                        <input 
-                            value={resident.birthDate}
-                            onChange={(e) => handleChange('birthDate', e)}
-                            className="bg-transparent border-none text-[9px] font-mono text-white w-full border-b border-blue-500/30 px-0 leading-tight"
-                        />
-                    </div>
-                    <div>
-                        <h3 className="text-gray-500 text-[5px] font-bold uppercase leading-none mb-0.5">CPF</h3>
-                        <input 
-                            value={resident.cpf}
-                            onChange={(e) => handleChange('cpf', e)}
-                            className="bg-transparent border-none text-[9px] font-mono text-gray-300 w-full border-b border-blue-500/30 px-0 leading-tight"
-                        />
-                    </div>
-                     <div>
-                        <h3 className="text-gray-500 text-[5px] font-bold uppercase leading-none mb-0.5">RG</h3>
-                        <input 
-                            value={resident.rg}
-                            onChange={(e) => handleChange('rg', e)}
-                            placeholder="RG"
-                            className="bg-transparent border-none text-[9px] font-mono text-gray-300 w-full border-b border-blue-500/30 px-0 leading-tight"
-                        />
-                    </div>
+                    <div><h3 className="text-gray-500 text-[5px] font-bold uppercase leading-none mb-0.5">Função</h3><EditableField field="role" value={resident.role} className="bg-blue-900/40 border border-blue-800/50 text-[8px] font-semibold text-blue-200 w-full rounded px-1.5 py-0.5 leading-tight truncate" /></div>
+                    <div><h3 className="text-gray-500 text-[5px] font-bold uppercase leading-none mb-0.5">Nascimento</h3><EditableField field="birthDate" value={resident.birthDate} className="bg-transparent border-none text-[9px] font-mono text-white w-full border-b border-blue-500/30 px-0 leading-tight" /></div>
+                    <div><h3 className="text-gray-500 text-[5px] font-bold uppercase leading-none mb-0.5">CPF</h3><EditableField field="cpf" value={resident.cpf} className="bg-transparent border-none text-[9px] font-mono text-gray-300 w-full border-b border-blue-500/30 px-0 leading-tight" /></div>
+                    <div><h3 className="text-gray-500 text-[5px] font-bold uppercase leading-none mb-0.5">RG</h3><EditableField field="rg" value={resident.rg} placeholder="RG" className="bg-transparent border-none text-[9px] font-mono text-gray-300 w-full border-b border-blue-500/30 px-0 leading-tight" /></div>
                 </div>
 
                 <div className="mt-auto pt-2 flex flex-col gap-0.5 z-10">
@@ -424,10 +247,10 @@ export const IDCard: React.FC<IDCardProps> = ({ resident, template, customTempla
     );
   }
 
-   /* --- TEMPLATE 3: MINIMAL (White/Clean) --- */
+   // --- Minimal Template ---
    return (
     <div ref={idRef} className="w-[350px] h-[220px] bg-white rounded-lg overflow-hidden shadow-xl border border-gray-200 relative flex flex-col p-2 font-mono select-none">
-         <Watermark />
+         {organizationLogo && <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-0 opacity-10"><img src={organizationLogo} className="w-48 h-48 object-contain grayscale" /></div>}
          
          <div className="flex justify-between items-start border-b-2 border-black pb-1 mb-2 relative z-10 shrink-0">
              <div className="flex items-center gap-2">
@@ -438,61 +261,22 @@ export const IDCard: React.FC<IDCardProps> = ({ resident, template, customTempla
                  </div>
              </div>
              <div className="text-right w-1/3 pt-1">
-                 <input 
-                    value={resident.role}
-                    onChange={(e) => handleChange('role', e)}
-                    className="text-[9px] font-bold bg-black text-white px-2 py-0.5 text-center w-full outline-none rounded-sm uppercase tracking-wide"
-                 />
+                 <EditableField field="role" value={resident.role} className="text-[9px] font-bold bg-black text-white px-2 py-0.5 text-center w-full outline-none rounded-sm uppercase tracking-wide" />
              </div>
          </div>
 
          <div className="flex gap-3 relative z-10 flex-1 min-h-0 mb-1">
              <div className="w-20 h-24 bg-gray-50 border border-black p-0.5 shrink-0 shadow-sm">
-                 <div className="w-full h-full grayscale overflow-hidden relative">
-                     {renderPhoto()}
-                 </div>
+                 <div className="w-full h-full grayscale overflow-hidden relative">{renderPhoto()}</div>
              </div>
              <div className="flex-1 min-w-0 flex flex-col justify-start gap-1.5 py-0.5">
-                 <div>
-                     <span className="text-[6px] block text-gray-500 uppercase leading-none mb-0.5">Nome</span>
-                     <input 
-                        value={resident.name}
-                        onChange={(e) => handleChange('name', e)}
-                        placeholder="NOME"
-                        className="text-[11px] font-bold block leading-none w-full outline-none hover:bg-gray-50 focus:bg-gray-100 bg-white/50 truncate border-b border-gray-200 h-4"
-                     />
-                 </div>
-                 <div>
-                     <span className="text-[6px] block text-gray-500 uppercase leading-none mb-0.5">Documento (CPF)</span>
-                     <div className="flex gap-1">
-                        <input 
-                            value={resident.cpf}
-                            onChange={(e) => handleChange('cpf', e)}
-                            className="text-[10px] block w-full outline-none hover:bg-gray-50 focus:bg-gray-100 bg-white/50 leading-none h-3.5"
-                        />
-                     </div>
-                 </div>
+                 <div><span className="text-[6px] block text-gray-500 uppercase leading-none mb-0.5">Nome</span><EditableField field="name" value={resident.name} placeholder="NOME" className="text-[11px] font-bold block leading-none w-full outline-none hover:bg-gray-50 bg-white/50 truncate border-b border-gray-200 h-4" /></div>
+                 <div><span className="text-[6px] block text-gray-500 uppercase leading-none mb-0.5">Documento (CPF)</span><EditableField field="cpf" value={resident.cpf} className="text-[10px] block w-full outline-none hover:bg-gray-50 bg-white/50 leading-none h-3.5" /></div>
                   <div className="flex justify-between gap-2 mt-1">
-                     <div className="flex-1">
-                         <span className="text-[6px] block text-gray-500 uppercase leading-none mb-0.5">Nasc.</span>
-                         <input 
-                            value={resident.birthDate}
-                            onChange={(e) => handleChange('birthDate', e)}
-                            className="text-[9px] block w-full outline-none hover:bg-gray-50 focus:bg-gray-100 bg-white/50 leading-none h-3.5"
-                         />
-                     </div>
-                      <div className="flex-1 text-right">
-                         <span className="text-[6px] block text-gray-500 uppercase leading-none mb-0.5">RG</span>
-                         <input 
-                            value={resident.rg}
-                            onChange={(e) => handleChange('rg', e)}
-                            className="text-[9px] block w-full text-right outline-none hover:bg-gray-50 focus:bg-gray-100 bg-white/50 leading-none h-3.5"
-                         />
-                     </div>
+                     <div className="flex-1"><span className="text-[6px] block text-gray-500 uppercase leading-none mb-0.5">Nasc.</span><EditableField field="birthDate" value={resident.birthDate} className="text-[9px] block w-full outline-none hover:bg-gray-50 bg-white/50 leading-none h-3.5" /></div>
+                      <div className="flex-1 text-right"><span className="text-[6px] block text-gray-500 uppercase leading-none mb-0.5">RG</span><EditableField field="rg" value={resident.rg} className="text-[9px] block w-full text-right outline-none hover:bg-gray-50 bg-white/50 leading-none h-3.5" /></div>
                  </div>
-                 <div className="mt-auto pt-1">
-                    <p className="text-[6px] font-bold border-t border-dashed border-gray-300 pt-1 text-right">{mandateText}</p>
-                 </div>
+                 <div className="mt-auto pt-1"><p className="text-[6px] font-bold border-t border-dashed border-gray-300 pt-1 text-right">{mandateText}</p></div>
              </div>
          </div>
          

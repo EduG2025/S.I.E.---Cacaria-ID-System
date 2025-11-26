@@ -91,13 +91,10 @@ const App: React.FC = () => {
 
     // 2. Check AI Capability
     const checkAi = async () => {
-        const key = process.env.API_KEY;
+        const key = await api.getActiveApiKey();
         if(key) {
             const valid = await validateApiKey(key);
             setIsAiReady(valid);
-        } else {
-            console.warn("API_KEY missing in environment.");
-            setIsAiReady(false);
         }
     };
     checkAi();
@@ -230,7 +227,8 @@ const App: React.FC = () => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
 
-  const idCardRef = useRef<HTMLDivElement>(null);
+  const idCardRef = useRef<HTMLDivElement>(null); // Interactive Ref
+  const printCardRef = useRef<HTMLDivElement>(null); // Read-Only Ref for Printing
 
   // --- Handlers ---
 
@@ -502,17 +500,25 @@ const App: React.FC = () => {
       }
   }
 
-  const handlePrint = async () => {
-      if (!idCardRef.current) return;
+  const getCleanImage = async () => {
+      // Use the dedicated read-only reference for capture
+      if (!printCardRef.current) return null;
       
+      return html2canvas(printCardRef.current, { 
+          scale: 3, 
+          backgroundColor: '#ffffff', 
+          useCORS: true,
+          logging: false
+      });
+  };
+
+  const handlePrint = async () => {
       try {
-          // Use the clean image generator
           const canvas = await getCleanImage();
           if(!canvas) return;
 
           const imgData = canvas.toDataURL('image/png');
           
-          // Open print window
           const printWindow = window.open('', '_blank', 'width=800,height=600');
           if (printWindow) {
               printWindow.document.write(`
@@ -538,54 +544,7 @@ const App: React.FC = () => {
       }
   };
 
-  const getCleanImage = async () => {
-      if (!idCardRef.current) return null;
-      
-      return html2canvas(idCardRef.current, { 
-          scale: 3, 
-          backgroundColor: '#ffffff', 
-          useCORS: true,
-          logging: false,
-          onclone: (clonedDoc) => {
-              const inputs = clonedDoc.querySelectorAll('input');
-              inputs.forEach((input) => {
-                  const value = input.value;
-                  const span = clonedDoc.createElement('div');
-                  span.textContent = value;
-                  
-                  const style = window.getComputedStyle(input);
-                  span.style.font = style.font;
-                  span.style.fontFamily = style.fontFamily;
-                  span.style.fontSize = style.fontSize;
-                  span.style.fontWeight = style.fontWeight;
-                  span.style.letterSpacing = style.letterSpacing;
-                  span.style.textTransform = style.textTransform;
-                  span.style.color = style.color;
-                  span.style.textAlign = style.textAlign;
-                  span.style.backgroundColor = 'transparent';
-                  span.style.border = 'none';
-                  
-                  span.style.position = style.position;
-                  span.style.left = style.left;
-                  span.style.top = style.top;
-                  span.style.width = style.width;
-                  span.style.height = style.height;
-                  span.style.display = 'flex';
-                  span.style.alignItems = 'center';
-                  
-                  if (style.textAlign === 'right') span.style.justifyContent = 'flex-end';
-                  else if (style.textAlign === 'center') span.style.justifyContent = 'center';
-                  else span.style.justifyContent = 'flex-start';
-
-                  input.style.display = 'none';
-                  input.parentNode?.insertBefore(span, input);
-              });
-          }
-      });
-  };
-
   const handleDownloadJPG = async () => {
-      if (!idCardRef.current) return;
       try {
           const canvas = await getCleanImage();
           if(!canvas) return;
@@ -983,6 +942,21 @@ const App: React.FC = () => {
                         <h3 className="text-white font-medium flex items-center gap-2 text-sm uppercase tracking-wide mb-6 w-full">
                             <LayoutTemplate size={16} className="text-brand-accent" /> Visualização
                         </h3>
+
+                        {/* HIDDEN PRINT CONTAINER (For High Quality & Data Persistence) */}
+                        <div style={{ position: 'absolute', top: -9999, left: -9999 }}>
+                            <div ref={printCardRef}>
+                                <IDCard 
+                                    resident={resident} 
+                                    template={template} 
+                                    customTemplateData={selectedCustomTemplate}
+                                    photoSettings={photoSettings} 
+                                    organizationLogo={organizationLogo} 
+                                    associationData={associationData}
+                                    isReadOnly={true} // Forces text rendering instead of inputs
+                                />
+                            </div>
+                        </div>
 
                         <Tooltip text="A carteirinha é interativa! Clique nos textos para editar">
                             {/* Visual Backdrop to make ID card pop */}
