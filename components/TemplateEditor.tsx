@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { CustomTemplate, TemplateElement, ElementType, Resident } from '@/types';
-import { Move, Type, Image as ImageIcon, Trash2, Plus, Save, Upload, Grid } from 'lucide-react';
+import { Type, Image as ImageIcon, Trash2, Save, Upload } from 'lucide-react';
 import { api } from '@/services/api';
 
 interface TemplateEditorProps {
@@ -20,6 +20,7 @@ export const TemplateEditor: React.FC<TemplateEditorProps> = ({ onBack }) => {
     });
 
     const [selectedElementId, setSelectedElementId] = useState<string | null>(null);
+    const [isSaving, setIsSaving] = useState(false);
     const canvasRef = useRef<HTMLDivElement>(null);
 
     // --- Loading ---
@@ -87,6 +88,7 @@ export const TemplateEditor: React.FC<TemplateEditorProps> = ({ onBack }) => {
 
     const handleSave = async () => {
         if (!currentTemplate.name) return alert("Dê um nome ao template");
+        setIsSaving(true);
         try {
             // Persistência Híbrida: Tenta Backend (MySQL) -> Fallback LocalStorage
             await api.saveTemplate(currentTemplate);
@@ -96,11 +98,14 @@ export const TemplateEditor: React.FC<TemplateEditorProps> = ({ onBack }) => {
         } catch (e) { 
             alert("Erro ao salvar template");
             console.error(e);
+        } finally {
+            setIsSaving(false);
         }
     };
 
     const loadTemplateToEdit = (t: CustomTemplate) => {
         setCurrentTemplate(t);
+        setSelectedElementId(null);
     };
 
     const createNew = () => {
@@ -154,7 +159,13 @@ export const TemplateEditor: React.FC<TemplateEditorProps> = ({ onBack }) => {
                 </div>
                 <div className="flex gap-2">
                     <button onClick={createNew} className="bg-gray-700 px-3 py-1 rounded text-sm hover:bg-gray-600">Novo</button>
-                    <button onClick={handleSave} className="bg-green-600 px-3 py-1 rounded text-sm hover:bg-green-500 flex items-center gap-1"><Save size={14}/> Salvar</button>
+                    <button 
+                        onClick={handleSave} 
+                        disabled={isSaving}
+                        className={`bg-green-600 px-3 py-1 rounded text-sm flex items-center gap-1 ${isSaving ? 'opacity-50 cursor-not-allowed' : 'hover:bg-green-500'}`}
+                    >
+                        <Save size={14}/> {isSaving ? 'Salvando...' : 'Salvar'}
+                    </button>
                 </div>
             </div>
 
