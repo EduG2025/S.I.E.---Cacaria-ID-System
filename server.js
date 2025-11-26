@@ -1,3 +1,4 @@
+
 import 'dotenv/config';
 import express from 'express';
 import mysql from 'mysql2/promise';
@@ -6,29 +7,19 @@ import bodyParser from 'body-parser';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
-// Configuração para __dirname em ES Modules
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-// Configuração do CORS para permitir requisições do Frontend
 app.use(cors());
-// Aumentar limite para suportar imagens Base64 grandes
 app.use(bodyParser.json({ limit: '50mb' }));
 app.use(bodyParser.urlencoded({ limit: '50mb', extended: true }));
 
-// Rota de Saúde (Health Check)
-app.get('/health', (req, res) => {
-    res.status(200).send('OK');
-});
-
-// Servir arquivos estáticos do React (Frontend)
+app.get('/health', (req, res) => { res.status(200).send('OK'); });
 app.use(express.static(path.join(__dirname, 'dist')));
 
-// Pool de conexão MySQL
-// Atualizado com os padrões de produção solicitados
 const pool = mysql.createPool({
     host: process.env.DB_HOST || '127.0.0.1',
     user: process.env.DB_USER || 'siecacaria',
@@ -36,385 +27,69 @@ const pool = mysql.createPool({
     database: process.env.DB_NAME || 'siecacaria',
     waitForConnections: true,
     connectionLimit: 10,
-    queueLimit: 0
+    queueLimit: 0,
+    enableKeepAlive: true, // FIX: Prevent connection loss
+    keepAliveInitialDelay: 0
 });
 
-// --- AUTOMATIC DATABASE MIGRATION & SEEDING ---
+// --- INIT DB ---
 const initDB = async () => {
-    let connection;
     try {
-        connection = await pool.getConnection();
-        console.log("✅ Conectado ao MySQL com sucesso!");
+        const connection = await pool.getConnection();
+        console.log("✅ MySQL Connected");
+        await connection.query(`CREATE TABLE IF NOT EXISTS residents (id VARCHAR(36) PRIMARY KEY, name VARCHAR(255) NOT NULL, role VARCHAR(100), cpf VARCHAR(20), rg VARCHAR(20), address TEXT, birth_date VARCHAR(20), registration_date VARCHAR(20), photo_url LONGTEXT)`);
+        await connection.query(`CREATE TABLE IF NOT EXISTS system_users (id VARCHAR(36) PRIMARY KEY, name VARCHAR(255), username VARCHAR(50) UNIQUE, password VARCHAR(255), role VARCHAR(20))`);
+        await connection.query(`CREATE TABLE IF NOT EXISTS association_settings (id INT PRIMARY KEY, data JSON, logo_base64 LONGTEXT)`);
+        await connection.query(`CREATE TABLE IF NOT EXISTS roles (name VARCHAR(100) PRIMARY KEY)`);
+        await connection.query(`CREATE TABLE IF NOT EXISTS id_card_templates (id VARCHAR(36) PRIMARY KEY, name VARCHAR(100), background_url LONGTEXT, elements JSON, width INT, height INT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)`);
+        await connection.query(`CREATE TABLE IF NOT EXISTS api_keys (id VARCHAR(36) PRIMARY KEY, label VARCHAR(100), key_value VARCHAR(255), is_active BOOLEAN, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)`);
         
-        await connection.beginTransaction();
-
-        // 1. Residents Table
-        await connection.query(`
-            CREATE TABLE IF NOT EXISTS residents (
-                id VARCHAR(36) PRIMARY KEY,
-                name VARCHAR(255) NOT NULL,
-                role VARCHAR(100),
-                cpf VARCHAR(20),
-                rg VARCHAR(20),
-                address TEXT,
-                birth_date VARCHAR(20),
-                registration_date VARCHAR(20),
-                photo_url LONGTEXT,
-                INDEX idx_name (name),
-                INDEX idx_cpf (cpf),
-                INDEX idx_role (role)
-            ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-        `);
-
-        // 2. System Users Table
-        await connection.query(`
-            CREATE TABLE IF NOT EXISTS system_users (
-                id VARCHAR(36) PRIMARY KEY,
-                name VARCHAR(255) NOT NULL,
-                username VARCHAR(50) UNIQUE NOT NULL,
-                password VARCHAR(255) NOT NULL,
-                role VARCHAR(20) NOT NULL
-            ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-        `);
-
-        // 3. Association Settings Table
-        await connection.query(`
-            CREATE TABLE IF NOT EXISTS association_settings (
-                id INT PRIMARY KEY,
-                data JSON,
-                logo_base64 LONGTEXT
-            ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-        `);
-
-        // 4. Roles Table
-        await connection.query(`
-            CREATE TABLE IF NOT EXISTS roles (
-                name VARCHAR(100) PRIMARY KEY
-            ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-        `);
-
-        // 5. Custom Templates Table
-        await connection.query(`
-            CREATE TABLE IF NOT EXISTS id_card_templates (
-                id VARCHAR(36) PRIMARY KEY,
-                name VARCHAR(100) NOT NULL,
-                background_url LONGTEXT,
-                elements JSON,
-                width INT DEFAULT 350,
-                height INT DEFAULT 220,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-        `);
+        // Seeds
+        await connection.query(`INSERT IGNORE INTO system_users (id, name, username, password, role) VALUES ('1', 'Admin', 'admin', 'admin', 'ADMIN')`);
+        if(process.env.API_KEY) await connection.query(`INSERT IGNORE INTO api_keys (id, label, key_value, is_active) VALUES ('seed', 'Env Key', ?, 1)`, [process.env.API_KEY]);
         
-        // 6. API Keys Table (NEW)
-        await connection.query(`
-            CREATE TABLE IF NOT EXISTS api_keys (
-                id VARCHAR(36) PRIMARY KEY,
-                label VARCHAR(100),
-                key_value VARCHAR(255) NOT NULL,
-                is_active BOOLEAN DEFAULT TRUE,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-        `);
-
-        // Seed Default Admin User
-        const [users] = await connection.query('SELECT * FROM system_users WHERE username = ?', ['admin']);
-        if (users.length === 0) {
-            await connection.query(
-                'INSERT INTO system_users (id, name, username, password, role) VALUES (?, ?, ?, ?, ?)', 
-                ['1', 'Administrador', 'admin', 'admin', 'ADMIN']
-            );
-            console.log("⚠️ Usuário Admin criado (admin/admin)");
-        }
-        
-        // Seed API Key if empty (Using the one provided by user as default seed if table is empty)
-        // Note: This logic runs once on new DBs.
-        const [keys] = await connection.query('SELECT * FROM api_keys');
-        if (keys.length === 0 && process.env.API_KEY) {
-             await connection.query(
-                'INSERT INTO api_keys (id, label, key_value, is_active) VALUES (?, ?, ?, ?)',
-                ['default-seed', 'Chave Padrão (.env)', process.env.API_KEY, true]
-            );
-             console.log("⚠️ Chave API Padrão inserida no banco.");
-        }
-
-        await connection.commit();
-        console.log("✅ Banco de Dados inicializado e otimizado.");
-
-    } catch (err) {
-        if (connection) await connection.rollback();
-        console.error("❌ Erro na inicialização do Banco de Dados:", err.message);
-    } finally {
-        if (connection) connection.release();
-    }
+        connection.release();
+    } catch (err) { console.error("DB Init Error:", err); }
 };
-
 initDB();
 
-// --- API ROUTES ---
-
-// 1. Auth
+// --- ROUTES ---
 app.post('/api/login', async (req, res) => {
-    const { username, password } = req.body;
     try {
-        const [rows] = await pool.query(
-            'SELECT * FROM system_users WHERE username = ? AND password = ?', 
-            [username, password]
-        );
-        if (rows.length > 0) {
-            res.json(rows[0]);
-        } else {
-            res.status(401).json({ error: 'Credenciais inválidas' });
-        }
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
+        const [rows] = await pool.query('SELECT * FROM system_users WHERE username = ? AND password = ?', [req.body.username, req.body.password]);
+        rows.length > 0 ? res.json(rows[0]) : res.status(401).json({ error: 'Invalid' });
+    } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// 2. Residents
+// Residents
 app.get('/api/residents', async (req, res) => {
-    try {
-        const [rows] = await pool.query('SELECT * FROM residents ORDER BY name ASC');
-        const residents = rows.map(r => ({
-            id: r.id,
-            name: r.name,
-            role: r.role,
-            cpf: r.cpf,
-            rg: r.rg,
-            address: r.address,
-            birthDate: r.birth_date,
-            registrationDate: r.registration_date,
-            photoUrl: r.photo_url
-        }));
-        res.json(residents);
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
+    try { const [rows] = await pool.query('SELECT * FROM residents'); res.json(rows.map(r => ({id: r.id, name: r.name, role: r.role, cpf: r.cpf, rg: r.rg, address: r.address, birthDate: r.birth_date, registrationDate: r.registration_date, photoUrl: r.photo_url}))); } catch (err) { res.status(500).send(err); }
 });
-
 app.post('/api/residents', async (req, res) => {
     const r = req.body;
-    try {
-        await pool.query(
-            `INSERT INTO residents (id, name, role, cpf, rg, address, birth_date, registration_date, photo_url)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-             ON DUPLICATE KEY UPDATE name=?, role=?, cpf=?, rg=?, address=?, birth_date=?, registration_date=?, photo_url=?`,
-            [r.id, r.name, r.role, r.cpf, r.rg, r.address, r.birthDate, r.registrationDate, r.photoUrl,
-             r.name, r.role, r.cpf, r.rg, r.address, r.birthDate, r.registrationDate, r.photoUrl]
-        );
-        res.json({ success: true });
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
+    try { await pool.query(`INSERT INTO residents (id, name, role, cpf, rg, address, birth_date, registration_date, photo_url) VALUES (?,?,?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE name=?, role=?, cpf=?, rg=?, address=?, birth_date=?, registration_date=?, photo_url=?`, 
+    [r.id, r.name, r.role, r.cpf, r.rg, r.address, r.birthDate, r.registrationDate, r.photoUrl, r.name, r.role, r.cpf, r.rg, r.address, r.birthDate, r.registrationDate, r.photoUrl]); res.json({success: true}); } catch (err) { res.status(500).send(err); }
 });
+app.delete('/api/residents/:id', async(req,res) => { await pool.query('DELETE FROM residents WHERE id=?', [req.params.id]); res.json({success:true}); });
 
-app.delete('/api/residents/:id', async (req, res) => {
-    try {
-        await pool.query('DELETE FROM residents WHERE id = ?', [req.params.id]);
-        res.json({ success: true });
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
+// Settings
+app.get('/api/settings', async(req,res) => { const [rows] = await pool.query('SELECT * FROM association_settings WHERE id=1'); res.json(rows[0] ? {data: rows[0].data, logo: rows[0].logo_base64} : {data:null, logo:null}); });
+app.post('/api/settings', async(req,res) => { await pool.query('INSERT INTO association_settings (id, data, logo_base64) VALUES (1,?,?) ON DUPLICATE KEY UPDATE data=?, logo_base64=?', [JSON.stringify(req.body.data), req.body.logo, JSON.stringify(req.body.data), req.body.logo]); res.json({success:true}); });
+
+// Keys
+app.get('/api/keys/active', async(req,res) => { 
+    const [rows] = await pool.query('SELECT key_value FROM api_keys WHERE is_active=1 LIMIT 1');
+    res.json({key: rows[0]?.key_value || process.env.API_KEY});
 });
+app.get('/api/keys', async(req,res) => { const [rows] = await pool.query('SELECT id, label, is_active FROM api_keys'); res.json(rows); });
+app.post('/api/keys', async(req,res) => { if(req.body.isActive) await pool.query('UPDATE api_keys SET is_active=0'); await pool.query('INSERT INTO api_keys (id, label, key_value, is_active) VALUES (?,?,?,?)', [req.body.id, req.body.label, req.body.key, req.body.isActive]); res.json({success:true}); });
+app.delete('/api/keys/:id', async(req,res) => { await pool.query('DELETE FROM api_keys WHERE id=?',[req.params.id]); res.json({success:true}); });
 
-// 3. Users
-app.get('/api/users', async (req, res) => {
-    try {
-        const [rows] = await pool.query('SELECT id, name, username, role FROM system_users');
-        res.json(rows);
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
-});
+// Roles & Templates
+app.get('/api/roles', async(req,res) => { const [rows] = await pool.query('SELECT name FROM roles'); res.json(rows.map(r=>r.name)); });
+app.post('/api/roles', async(req,res) => { await pool.query('INSERT IGNORE INTO roles (name) VALUES (?)', [req.body.name]); res.json({success:true}); });
+app.get('/api/templates', async(req,res) => { const [rows] = await pool.query('SELECT * FROM id_card_templates'); res.json(rows.map(t=>({...t, backgroundUrl: t.background_url, createdAt: t.created_at}))); });
+app.post('/api/templates', async(req,res) => { const t=req.body; await pool.query('INSERT INTO id_card_templates (id,name,background_url,elements,width,height) VALUES (?,?,?,?,?,?) ON DUPLICATE KEY UPDATE name=?, background_url=?, elements=?', [t.id,t.name,t.backgroundUrl,JSON.stringify(t.elements),t.width,t.height, t.name,t.backgroundUrl,JSON.stringify(t.elements)]); res.json({success:true}); });
 
-app.post('/api/users', async (req, res) => {
-    const u = req.body;
-    try {
-        await pool.query(
-            'INSERT INTO system_users (id, name, username, password, role) VALUES (?, ?, ?, ?, ?)',
-            [u.id, u.name, u.username, u.password, u.role]
-        );
-        res.json({ success: true });
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
-});
-
-app.delete('/api/users/:id', async (req, res) => {
-    try {
-        await pool.query('DELETE FROM system_users WHERE id = ?', [req.params.id]);
-        res.json({ success: true });
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
-});
-
-// 4. Settings
-app.get('/api/settings', async (req, res) => {
-    try {
-        const [rows] = await pool.query('SELECT * FROM association_settings WHERE id = 1');
-        if (rows.length > 0) {
-            res.json({ data: rows[0].data, logo: rows[0].logo_base64 });
-        } else {
-            res.json({ data: null, logo: null });
-        }
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
-});
-
-app.post('/api/settings', async (req, res) => {
-    const { data, logo } = req.body;
-    try {
-        await pool.query(
-            'INSERT INTO association_settings (id, data, logo_base64) VALUES (1, ?, ?) ON DUPLICATE KEY UPDATE data=?, logo_base64=?',
-            [JSON.stringify(data), logo, JSON.stringify(data), logo]
-        );
-        res.json({ success: true });
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
-});
-
-// 5. Roles
-app.get('/api/roles', async (req, res) => {
-    try {
-        const [rows] = await pool.query('SELECT name FROM roles');
-        res.json(rows.map(r => r.name));
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
-});
-
-app.post('/api/roles', async (req, res) => {
-    try {
-        await pool.query('INSERT IGNORE INTO roles (name) VALUES (?)', [req.body.name]);
-        res.json({ success: true });
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
-});
-
-// 6. Templates
-app.get('/api/templates', async (req, res) => {
-    try {
-        const [rows] = await pool.query('SELECT * FROM id_card_templates ORDER BY created_at DESC');
-        res.json(rows.map(t => ({
-            id: t.id,
-            name: t.name,
-            backgroundUrl: t.background_url,
-            elements: t.elements, 
-            width: t.width,
-            height: t.height,
-            createdAt: t.created_at
-        })));
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
-});
-
-app.post('/api/templates', async (req, res) => {
-    const t = req.body;
-    try {
-        await pool.query(
-            `INSERT INTO id_card_templates (id, name, background_url, elements, width, height) 
-             VALUES (?, ?, ?, ?, ?, ?) 
-             ON DUPLICATE KEY UPDATE name=?, background_url=?, elements=?, width=?, height=?`,
-            [t.id, t.name, t.backgroundUrl, JSON.stringify(t.elements), t.width, t.height,
-             t.name, t.backgroundUrl, JSON.stringify(t.elements), t.width, t.height]
-        );
-        res.json({ success: true });
-    } catch (err) {
-        console.log(err);
-        res.status(500).json({ error: err.message });
-    }
-});
-
-app.delete('/api/templates/:id', async (req, res) => {
-    try {
-        await pool.query('DELETE FROM id_card_templates WHERE id = ?', [req.params.id]);
-        res.json({ success: true });
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
-});
-
-// 7. API Keys (NEW)
-app.get('/api/keys', async (req, res) => {
-    try {
-        const [rows] = await pool.query('SELECT id, label, key_value, is_active, created_at FROM api_keys ORDER BY created_at DESC');
-        // Rename key_value to key for frontend consistency
-        res.json(rows.map(r => ({ ...r, key: r.key_value, key_value: undefined })));
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
-});
-
-app.post('/api/keys', async (req, res) => {
-    const { id, label, key, isActive } = req.body;
-    try {
-        // If this new key is active, deactivate others (optional, but good practice if only 1 allowed)
-        if (isActive) {
-             await pool.query('UPDATE api_keys SET is_active = FALSE');
-        }
-        await pool.query(
-            'INSERT INTO api_keys (id, label, key_value, is_active) VALUES (?, ?, ?, ?)',
-            [id, label, key, isActive]
-        );
-        res.json({ success: true });
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
-});
-
-app.put('/api/keys/:id', async (req, res) => {
-    const { isActive } = req.body;
-    try {
-        if (isActive) {
-            // Deactivate all others
-            await pool.query('UPDATE api_keys SET is_active = FALSE');
-        }
-        await pool.query('UPDATE api_keys SET is_active = ? WHERE id = ?', [isActive, req.params.id]);
-        res.json({ success: true });
-    } catch (err) {
-         res.status(500).json({ error: err.message });
-    }
-});
-
-app.delete('/api/keys/:id', async (req, res) => {
-    try {
-        await pool.query('DELETE FROM api_keys WHERE id = ?', [req.params.id]);
-        res.json({ success: true });
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
-});
-
-app.get('/api/keys/active', async (req, res) => {
-    try {
-        // First try DB
-        const [rows] = await pool.query('SELECT key_value FROM api_keys WHERE is_active = TRUE LIMIT 1');
-        if (rows.length > 0) {
-            res.json({ key: rows[0].key_value });
-        } else {
-            // Fallback to Env if DB empty
-            if (process.env.API_KEY) {
-                res.json({ key: process.env.API_KEY });
-            } else {
-                res.status(404).json({ error: 'No active key found' });
-            }
-        }
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
-});
-
-
-// Fallback para React Router
-app.get('*', (req, res) => {
-    res.sendFile(path.join(__dirname, 'dist', 'index.html'));
-});
-
-app.listen(PORT, '0.0.0.0', () => {
-    console.log(`Server running on port ${PORT}`);
-});
+app.get('*', (req, res) => res.sendFile(path.join(__dirname, 'dist', 'index.html')));
+app.listen(PORT, '0.0.0.0', () => console.log(`Server running on ${PORT}`));
