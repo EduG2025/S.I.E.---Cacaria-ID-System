@@ -16,12 +16,30 @@ const STORAGE_KEYS = {
     API_KEYS: 'sie_api_keys_db'
 };
 
-// --- LOCAL STORAGE HELPERS ---
+// --- LOCAL STORAGE HELPERS (ROBUST) ---
 const localDB = {
-    get: (key: string) => JSON.parse(localStorage.getItem(key) || '[]'),
+    get: (key: string) => {
+        try {
+            return JSON.parse(localStorage.getItem(key) || '[]');
+        } catch (e) {
+            console.warn(`Corrupted local data for ${key}, resetting.`);
+            return [];
+        }
+    },
     set: (key: string, data: any) => localStorage.setItem(key, JSON.stringify(data)),
-    getObj: (key: string) => JSON.parse(localStorage.getItem(key) || 'null'),
+    getObj: (key: string) => {
+        try {
+            return JSON.parse(localStorage.getItem(key) || 'null');
+        } catch (e) {
+            return null;
+        }
+    },
 };
+
+interface SaveResult {
+    success: boolean;
+    offline: boolean;
+}
 
 /**
  * Hybrid Fetch Function
@@ -30,10 +48,11 @@ async function fetchWithFallback<T>(
     endpoint: string, 
     options: RequestInit | undefined, 
     fallbackFn: () => Promise<T> | T
-): Promise<T> {
+): Promise<T & { _offline?: boolean }> {
     try {
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 1500); 
+        // FIX: Increased timeout to 15000ms (15s) to handle large image uploads/edits
+        const timeoutId = setTimeout(() => controller.abort(), 15000); 
 
         const res = await fetch(`${API_URL}${endpoint}`, {
             ...options,
@@ -44,12 +63,17 @@ async function fetchWithFallback<T>(
         const contentType = res.headers.get("content-type");
         
         if (res.ok && contentType && contentType.includes("application/json")) {
-            return await res.json();
+            const data = await res.json();
+            return { ...data, _offline: false };
         } else {
+            // If server returns 404 or 500, throws to trigger fallback
             throw new Error(`Backend unavailable or invalid response for ${endpoint}`);
         }
     } catch (err) {
-        return await fallbackFn();
+        console.warn(`API Error on ${endpoint}:`, err);
+        const fallbackData = await fallbackFn();
+        // @ts-ignore
+        return { ...fallbackData, _offline: true };
     }
 }
 
@@ -58,7 +82,7 @@ export const api = {
     async checkBackendConnection(): Promise<boolean> {
         try {
             const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 1000);
+            const timeoutId = setTimeout(() => controller.abort(), 2000);
             const res = await fetch(`${window.location.hostname === 'localhost' ? 'http://localhost:3001' : ''}/health`, { 
                 method: 'GET',
                 signal: controller.signal 
@@ -77,7 +101,8 @@ export const api = {
         });
     },
 
-    async saveResident(resident: Resident): Promise<void> {
+    async saveResident(resident: Resident): Promise<SaveResult> {
+        // @ts-ignore
         return fetchWithFallback('/residents', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -88,7 +113,8 @@ export const api = {
             if (index >= 0) list[index] = resident;
             else list.push(resident);
             localDB.set(STORAGE_KEYS.RESIDENTS, list);
-        });
+            return { success: true };
+        }).then(res => ({ success: true, offline: !!res._offline }));
     },
 
     async deleteResident(id: string): Promise<void> {
@@ -151,14 +177,16 @@ export const api = {
         });
     },
 
-    async saveSettings(data: AssociationData, logo: string | null): Promise<void> {
+    async saveSettings(data: AssociationData, logo: string | null): Promise<SaveResult> {
+        // @ts-ignore
         return fetchWithFallback('/settings', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ data, logo })
         }, () => {
              localDB.set(STORAGE_KEYS.SETTINGS, { data, logo });
-        });
+             return { success: true };
+        }).then(res => ({ success: true, offline: !!res._offline }));
     },
 
     // --- Roles ---
@@ -189,7 +217,8 @@ export const api = {
         });
     },
 
-    async saveTemplate(template: CustomTemplate): Promise<void> {
+    async saveTemplate(template: CustomTemplate): Promise<SaveResult> {
+        // @ts-ignore
         return fetchWithFallback('/templates', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -200,7 +229,8 @@ export const api = {
             if (index >= 0) list[index] = template;
             else list.push(template);
             localDB.set(STORAGE_KEYS.TEMPLATES, list);
-        });
+            return { success: true };
+        }).then(res => ({ success: true, offline: !!res._offline }));
     },
 
     async deleteTemplate(id: string): Promise<void> {

@@ -325,8 +325,15 @@ const App: React.FC = () => {
       }
       setStatus({ ...status, message: 'Salvando no Banco de Dados...' });
       try {
-        await api.saveResident(resident);
-        alert("Cadastro Salvo com Sucesso!");
+        const result = await api.saveResident(resident);
+        
+        // FEEDBACK DE ONDE FOI SALVO
+        if (result.offline) {
+            alert("⚠️ Atenção: Conexão com servidor instável. Cadastro salvo LOCALMENTE (Offline). Verifique sua conexão.");
+        } else {
+            alert("✅ Sucesso: Cadastro salvo no Banco de Dados (MySQL)!");
+        }
+        
         setView(AppView.RESIDENTS_LIST);
       } catch (err) {
         alert("Erro ao salvar cadastro.");
@@ -507,8 +514,12 @@ const App: React.FC = () => {
   // --- Association System Handlers ---
   const handleAssociationSave = async () => {
       try {
-          await api.saveSettings(associationData, organizationLogo);
-          alert("Dados da Associação salvos com sucesso!");
+          const result = await api.saveSettings(associationData, organizationLogo);
+          if (result.offline) {
+              alert("⚠️ Aviso: Dados salvos LOCALMENTE (Offline). Conexão com servidor indisponível.");
+          } else {
+              alert("✅ Dados da Associação salvos com sucesso no Servidor!");
+          }
       } catch (e) {
           alert("Erro ao salvar configurações.");
       }

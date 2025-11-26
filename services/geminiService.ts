@@ -2,11 +2,9 @@ import { GoogleGenAI, Type } from "@google/genai";
 import { api } from "./api";
 
 // --- VALIDATION HELPER ---
-// Used by the Admin Panel to check if a key works before saving
 export const validateApiKey = async (testKey: string): Promise<boolean> => {
     try {
         const ai = new GoogleGenAI({ apiKey: testKey });
-        // Simple fast call to check validity
         await ai.models.generateContent({
             model: 'gemini-2.5-flash',
             contents: { parts: [{ text: "ping" }] }
@@ -19,7 +17,6 @@ export const validateApiKey = async (testKey: string): Promise<boolean> => {
 };
 
 // --- DYNAMIC AI INSTANCE ---
-// Fetches the active key from the DB at runtime.
 const getAI = async () => {
   const apiKey = await api.getActiveApiKey();
   
@@ -37,6 +34,26 @@ const extractImageFromResponse = (response: any): string => {
       }
     }
     throw new Error("A IA processou a solicitação mas não retornou dados de imagem.");
+};
+
+// Helper to extract JSON safely
+const extractJSON = (text: string | undefined): any => {
+    if (!text) return {};
+    try {
+        // Try standard JSON parse
+        return JSON.parse(text);
+    } catch (e) {
+        // Try extracting from markdown block
+        const match = text.match(/```json\n([\s\S]*?)\n```/) || text.match(/\{[\s\S]*\}/);
+        if (match) {
+            try {
+                return JSON.parse(match[1] || match[0]);
+            } catch (e2) {
+                console.error("Failed to parse extracted JSON string", e2);
+            }
+        }
+        return {};
+    }
 };
 
 // --- 1. Fast Text Analysis (OCR/Extraction) ---
@@ -92,11 +109,11 @@ export const editResidentPhoto = async (base64Image: string, prompt: string, mim
     return extractImageFromResponse(response);
 
   } catch (error: any) {
-    const errMsg = error.message || JSON.stringify(error);
+    const errMsg = (error.message || JSON.stringify(error)).toLowerCase();
     console.warn(`Gemini 3 Pro falhou (${errMsg}). Tentando fallback...`);
 
     // Verifica se é erro de Cota (429) ou Recurso Esgotado
-    if (errMsg.includes('429') || errMsg.includes('RESOURCE_EXHAUSTED') || errMsg.includes('quota')) {
+    if (errMsg.includes('429') || errMsg.includes('resource_exhausted') || errMsg.includes('quota')) {
         
         // TENTATIVA 2: Gemini 2.5 Flash Image (Nano Banana - Mais Econômico)
         try {
@@ -167,21 +184,14 @@ export const searchPublicData = async (query: string): Promise<any> => {
     const ai = await getAI();
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash",
-      contents: `Search for public information about: "${query}" in the region of Cacaria, Rio de Janeiro (or general Brazil if specific logic applies). 
-      Try to find address details, full name verification if it's a public figure, or zip code.
+      contents: `Search for public information about: "${query}" in the region of Cacaria, Rio de Janeiro. 
       Return the data in JSON format with keys: address, potentialName, zipcode, notes.`,
       config: {
         tools: [{googleSearch: {}}],
       },
     });
 
-    const text = response.text || "{}";
-    const jsonMatch = text.match(/```json\n([\s\S]*?)\n```/) || text.match(/\{[\s\S]*\}/);
-    
-    if (jsonMatch) {
-        return JSON.parse(jsonMatch[1] || jsonMatch[0]);
-    }
-    return { notes: text };
+    return extractJSON(response.text);
 
   } catch (error) {
     console.error("Error searching public data:", error);
@@ -203,20 +213,13 @@ export const fetchCompanyData = async (cnpj: string): Promise<any> => {
       number (Número), 
       city (Cidade), 
       state (Estado - UF), 
-      zip (CEP).
-      If exact number is not found, leave blank.`,
+      zip (CEP).`,
       config: {
         tools: [{googleSearch: {}}],
       },
     });
 
-    const text = response.text || "{}";
-    const jsonMatch = text.match(/```json\n([\s\S]*?)\n```/) || text.match(/\{[\s\S]*\}/);
-    
-    if (jsonMatch) {
-        return JSON.parse(jsonMatch[1] || jsonMatch[0]);
-    }
-    return {};
+    return extractJSON(response.text);
   } catch (error) {
     console.error("Error fetching company data:", error);
     return {};
