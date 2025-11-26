@@ -57,6 +57,14 @@ export interface Director {
   title: string;
 }
 
+export interface ApiKey {
+  id: string;
+  label: string;
+  key: string; // Mascarada no frontend na listagem, mas usada internamente
+  isActive: boolean;
+  createdAt: string;
+}
+
 export interface AssociationData {
   name: string;
   cnpj: string;

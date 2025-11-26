@@ -1,10 +1,30 @@
 import { GoogleGenAI, Type } from "@google/genai";
+import { api } from "./api";
 
-// Helper para instanciar a IA apenas quando necessário e verificar a chave
-const getAI = () => {
-  const apiKey = process.env.API_KEY;
-  if (!apiKey || apiKey.includes("API_KEY_HERE")) {
-    throw new Error("Chave de API do Gemini não configurada. Verifique o arquivo .env e rode 'npm run build'.");
+// --- VALIDATION HELPER ---
+// Used by the Admin Panel to check if a key works before saving
+export const validateApiKey = async (testKey: string): Promise<boolean> => {
+    try {
+        const ai = new GoogleGenAI({ apiKey: testKey });
+        // Simple fast call to check validity
+        await ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: { parts: [{ text: "ping" }] }
+        });
+        return true;
+    } catch (e) {
+        console.error("Key Validation Failed:", e);
+        return false;
+    }
+};
+
+// --- DYNAMIC AI INSTANCE ---
+// Fetches the active key from the DB at runtime.
+const getAI = async () => {
+  const apiKey = await api.getActiveApiKey();
+  
+  if (!apiKey) {
+    throw new Error("Nenhuma Chave de API ativa encontrada no Sistema. Entre em contato com o Administrador para configurar uma chave válida.");
   }
   return new GoogleGenAI({ apiKey });
 };
@@ -12,7 +32,7 @@ const getAI = () => {
 // --- 1. Fast Text Analysis (Flash) ---
 export const analyzeDocumentText = async (base64Image: string, mimeType: string = 'image/jpeg'): Promise<any> => {
   try {
-    const ai = getAI();
+    const ai = await getAI();
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash',
       contents: {
@@ -51,7 +71,7 @@ export const analyzeDocumentText = async (base64Image: string, mimeType: string 
 // --- 2. Image Editing (Nano Banana / Flash Image) ---
 export const editResidentPhoto = async (base64Image: string, prompt: string, mimeType: string = 'image/jpeg'): Promise<string> => {
   try {
-    const ai = getAI();
+    const ai = await getAI();
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash-image', 
       contents: {
@@ -75,7 +95,7 @@ export const editResidentPhoto = async (base64Image: string, prompt: string, mim
       }
     }
     throw new Error("A IA não retornou nenhuma imagem gerada.");
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error editing photo:", error);
     throw error;
   }
@@ -84,7 +104,7 @@ export const editResidentPhoto = async (base64Image: string, prompt: string, mim
 // --- 3. Image Generation (Pro Image) ---
 export const generatePlaceholderAvatar = async (description: string, size: '1K' | '2K' | '4K', aspectRatio: string = '1:1'): Promise<string> => {
   try {
-    const ai = getAI();
+    const ai = await getAI();
     const response = await ai.models.generateContent({
       model: 'gemini-3-pro-image-preview',
       contents: {
@@ -113,7 +133,7 @@ export const generatePlaceholderAvatar = async (description: string, size: '1K' 
 // --- 4. Deep Analysis (Flash) ---
 export const deepAnalyzeDocument = async (base64Image: string): Promise<string> => {
     try {
-        const ai = getAI();
+        const ai = await getAI();
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash',
             contents: {
@@ -133,7 +153,7 @@ export const deepAnalyzeDocument = async (base64Image: string): Promise<string> 
 // --- 5. Census Search (Search Grounding) ---
 export const searchPublicData = async (query: string): Promise<any> => {
   try {
-    const ai = getAI();
+    const ai = await getAI();
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash",
       contents: `Search for public information about: "${query}" in the region of Cacaria, Rio de Janeiro (or general Brazil if specific logic applies). 
@@ -161,7 +181,7 @@ export const searchPublicData = async (query: string): Promise<any> => {
 // --- 6. Company Data Search (CNPJ) ---
 export const fetchCompanyData = async (cnpj: string): Promise<any> => {
   try {
-    const ai = getAI();
+    const ai = await getAI();
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash",
       contents: `Search for the Brazilian company with CNPJ: "${cnpj}". 

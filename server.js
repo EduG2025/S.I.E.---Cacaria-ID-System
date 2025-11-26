@@ -105,6 +105,17 @@ const initDB = async () => {
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
         `);
+        
+        // 6. API Keys Table (NEW)
+        await connection.query(`
+            CREATE TABLE IF NOT EXISTS api_keys (
+                id VARCHAR(36) PRIMARY KEY,
+                label VARCHAR(100),
+                key_value VARCHAR(255) NOT NULL,
+                is_active BOOLEAN DEFAULT TRUE,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+        `);
 
         // Seed Default Admin User
         const [users] = await connection.query('SELECT * FROM system_users WHERE username = ?', ['admin']);
@@ -273,7 +284,7 @@ app.post('/api/roles', async (req, res) => {
     }
 });
 
-// 6. Templates (NEW)
+// 6. Templates
 app.get('/api/templates', async (req, res) => {
     try {
         const [rows] = await pool.query('SELECT * FROM id_card_templates ORDER BY created_at DESC');
@@ -281,7 +292,7 @@ app.get('/api/templates', async (req, res) => {
             id: t.id,
             name: t.name,
             backgroundUrl: t.background_url,
-            elements: t.elements, // MySQL JSON type is auto parsed by driver usually, if not we parse
+            elements: t.elements, 
             width: t.width,
             height: t.height,
             createdAt: t.created_at
@@ -316,6 +327,71 @@ app.delete('/api/templates/:id', async (req, res) => {
         res.status(500).json({ error: err.message });
     }
 });
+
+// 7. API Keys (NEW)
+app.get('/api/keys', async (req, res) => {
+    try {
+        const [rows] = await pool.query('SELECT id, label, key_value, is_active, created_at FROM api_keys ORDER BY created_at DESC');
+        // Rename key_value to key for frontend consistency
+        res.json(rows.map(r => ({ ...r, key: r.key_value, key_value: undefined })));
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.post('/api/keys', async (req, res) => {
+    const { id, label, key, isActive } = req.body;
+    try {
+        // If this new key is active, deactivate others (optional, but good practice if only 1 allowed)
+        if (isActive) {
+             await pool.query('UPDATE api_keys SET is_active = FALSE');
+        }
+        await pool.query(
+            'INSERT INTO api_keys (id, label, key_value, is_active) VALUES (?, ?, ?, ?)',
+            [id, label, key, isActive]
+        );
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.put('/api/keys/:id', async (req, res) => {
+    const { isActive } = req.body;
+    try {
+        if (isActive) {
+            // Deactivate all others
+            await pool.query('UPDATE api_keys SET is_active = FALSE');
+        }
+        await pool.query('UPDATE api_keys SET is_active = ? WHERE id = ?', [isActive, req.params.id]);
+        res.json({ success: true });
+    } catch (err) {
+         res.status(500).json({ error: err.message });
+    }
+});
+
+app.delete('/api/keys/:id', async (req, res) => {
+    try {
+        await pool.query('DELETE FROM api_keys WHERE id = ?', [req.params.id]);
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.get('/api/keys/active', async (req, res) => {
+    try {
+        const [rows] = await pool.query('SELECT key_value FROM api_keys WHERE is_active = TRUE LIMIT 1');
+        if (rows.length > 0) {
+            res.json({ key: rows[0].key_value });
+        } else {
+            res.status(404).json({ error: 'No active key found' });
+        }
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
 
 // Fallback para React Router
 app.get('*', (req, res) => {

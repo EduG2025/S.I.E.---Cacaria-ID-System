@@ -1,7 +1,6 @@
-import { Resident, SystemUser, AssociationData } from '@/types';
+import { Resident, SystemUser, AssociationData, CustomTemplate, ApiKey } from '@/types';
 
-// Detect API URL: Development (localhost:3001) vs Production (Relative /api)
-// Note: In some preview environments, localhost:3001 might not be directly accessible, triggering the fallback.
+// Detect API URL
 const API_URL = window.location.hostname === 'localhost' 
     ? 'http://localhost:3001/api' 
     : '/api';
@@ -11,7 +10,9 @@ const STORAGE_KEYS = {
     RESIDENTS: 'sie_residents_db',
     USERS: 'sie_users_db',
     SETTINGS: 'sie_settings_db',
-    ROLES: 'sie_roles_db'
+    ROLES: 'sie_roles_db',
+    TEMPLATES: 'sie_templates_db',
+    API_KEYS: 'sie_api_keys_db' // New key for offline
 };
 
 // --- LOCAL STORAGE HELPERS ---
@@ -23,8 +24,6 @@ const localDB = {
 
 /**
  * Hybrid Fetch Function
- * Tries to fetch from the Node.js Backend. 
- * If it fails (Network Error, 404, or non-JSON response), it executes the fallbackFn (LocalStorage).
  */
 async function fetchWithFallback<T>(
     endpoint: string, 
@@ -32,9 +31,8 @@ async function fetchWithFallback<T>(
     fallbackFn: () => Promise<T> | T
 ): Promise<T> {
     try {
-        // Create a timeout signal to fail fast if backend is not running
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 1500); // 1.5s timeout
+        const timeoutId = setTimeout(() => controller.abort(), 1500); 
 
         const res = await fetch(`${API_URL}${endpoint}`, {
             ...options,
@@ -44,16 +42,12 @@ async function fetchWithFallback<T>(
 
         const contentType = res.headers.get("content-type");
         
-        // If success and is JSON
         if (res.ok && contentType && contentType.includes("application/json")) {
             return await res.json();
         } else {
-            // Force error to trigger fallback
             throw new Error(`Backend unavailable or invalid response for ${endpoint}`);
         }
     } catch (err) {
-        // Silently fail over to LocalStorage so the user doesn't see an error
-        // console.warn(`API ${endpoint} failed, using LocalStorage fallback.`);
         return await fallbackFn();
     }
 }
@@ -64,9 +58,6 @@ export const api = {
         try {
             const controller = new AbortController();
             const timeoutId = setTimeout(() => controller.abort(), 1000);
-            
-            // Tenta acessar a rota de health check (precisa ser definida no server.js)
-            // Se falhar, tenta listar roles como proxy de saúde
             const res = await fetch(`${window.location.hostname === 'localhost' ? 'http://localhost:3001' : ''}/health`, { 
                 method: 'GET',
                 signal: controller.signal 
@@ -113,11 +104,9 @@ export const api = {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ username, password })
         }, () => {
-            // Hardcoded fallback admin
             if (username === 'admin' && password === 'admin') {
                 return { id: '1', name: 'Administrador', username: 'admin', role: 'ADMIN' } as SystemUser;
             }
-            // Check local users
             const users = localDB.get(STORAGE_KEYS.USERS) as SystemUser[];
             const found = users.find(u => u.username === username && u.password === password);
             return found || null;
@@ -127,7 +116,6 @@ export const api = {
     async getUsers(): Promise<SystemUser[]> {
         return fetchWithFallback('/users', undefined, () => {
             const users = localDB.get(STORAGE_KEYS.USERS) as SystemUser[];
-            // Ensure at least one admin exists in local storage
             if (users.length === 0) {
                  return [{ id: '1', name: 'Administrador', username: 'admin', role: 'ADMIN' }];
             }
@@ -191,5 +179,85 @@ export const api = {
                 localDB.set(STORAGE_KEYS.ROLES, roles);
             }
         });
+    },
+
+    // --- Templates ---
+    async getTemplates(): Promise<CustomTemplate[]> {
+        return fetchWithFallback('/templates', undefined, () => {
+            return localDB.get(STORAGE_KEYS.TEMPLATES);
+        });
+    },
+
+    async saveTemplate(template: CustomTemplate): Promise<void> {
+        return fetchWithFallback('/templates', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(template)
+        }, () => {
+            const list = localDB.get(STORAGE_KEYS.TEMPLATES) as CustomTemplate[];
+            const index = list.findIndex(t => t.id === template.id);
+            if (index >= 0) list[index] = template;
+            else list.push(template);
+            localDB.set(STORAGE_KEYS.TEMPLATES, list);
+        });
+    },
+
+    async deleteTemplate(id: string): Promise<void> {
+        return fetchWithFallback(`/templates/${id}`, { method: 'DELETE' }, () => {
+            const list = localDB.get(STORAGE_KEYS.TEMPLATES) as CustomTemplate[];
+            localDB.set(STORAGE_KEYS.TEMPLATES, list.filter(t => t.id !== id));
+        });
+    },
+
+    // --- API KEYS MANAGEMENT (New) ---
+    async getApiKeys(): Promise<ApiKey[]> {
+        return fetchWithFallback('/keys', undefined, () => {
+            return localDB.get(STORAGE_KEYS.API_KEYS);
+        });
+    },
+
+    async addApiKey(keyData: ApiKey): Promise<void> {
+        return fetchWithFallback('/keys', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(keyData)
+        }, () => {
+            const keys = localDB.get(STORAGE_KEYS.API_KEYS) as ApiKey[];
+            if (keyData.isActive) {
+                keys.forEach(k => k.isActive = false);
+            }
+            keys.push(keyData);
+            localDB.set(STORAGE_KEYS.API_KEYS, keys);
+        });
+    },
+
+    async updateApiKeyStatus(id: string, isActive: boolean): Promise<void> {
+        return fetchWithFallback(`/keys/${id}`, { 
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ isActive })
+        }, () => {
+            const keys = localDB.get(STORAGE_KEYS.API_KEYS) as ApiKey[];
+            if (isActive) {
+                keys.forEach(k => k.isActive = false);
+            }
+            const target = keys.find(k => k.id === id);
+            if (target) target.isActive = isActive;
+            localDB.set(STORAGE_KEYS.API_KEYS, keys);
+        });
+    },
+
+    async deleteApiKey(id: string): Promise<void> {
+        return fetchWithFallback(`/keys/${id}`, { method: 'DELETE' }, () => {
+             const keys = localDB.get(STORAGE_KEYS.API_KEYS) as ApiKey[];
+             localDB.set(STORAGE_KEYS.API_KEYS, keys.filter(k => k.id !== id));
+        });
+    },
+
+    async getActiveApiKey(): Promise<string | null> {
+        return fetchWithFallback('/keys/active', undefined, () => {
+             const keys = localDB.get(STORAGE_KEYS.API_KEYS) as ApiKey[];
+             return keys.find(k => k.isActive)?.key || null;
+        }).then((data: any) => data.key || data).catch(() => null);
     }
 };

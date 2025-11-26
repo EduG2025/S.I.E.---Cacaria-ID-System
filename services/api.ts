@@ -1,4 +1,4 @@
-import { Resident, SystemUser, AssociationData, CustomTemplate } from '@/types';
+import { Resident, SystemUser, AssociationData, CustomTemplate, ApiKey } from '@/types';
 
 // Detect API URL
 const API_URL = window.location.hostname === 'localhost' 
@@ -11,7 +11,8 @@ const STORAGE_KEYS = {
     USERS: 'sie_users_db',
     SETTINGS: 'sie_settings_db',
     ROLES: 'sie_roles_db',
-    TEMPLATES: 'sie_templates_db'
+    TEMPLATES: 'sie_templates_db',
+    API_KEYS: 'sie_api_keys_db'
 };
 
 // --- LOCAL STORAGE HELPERS ---
@@ -180,7 +181,7 @@ export const api = {
         });
     },
 
-    // --- Templates (NEW) ---
+    // --- Templates ---
     async getTemplates(): Promise<CustomTemplate[]> {
         return fetchWithFallback('/templates', undefined, () => {
             return localDB.get(STORAGE_KEYS.TEMPLATES);
@@ -206,5 +207,57 @@ export const api = {
             const list = localDB.get(STORAGE_KEYS.TEMPLATES) as CustomTemplate[];
             localDB.set(STORAGE_KEYS.TEMPLATES, list.filter(t => t.id !== id));
         });
+    },
+
+    // --- API KEYS MANAGEMENT ---
+    async getApiKeys(): Promise<ApiKey[]> {
+        return fetchWithFallback('/keys', undefined, () => {
+            return localDB.get(STORAGE_KEYS.API_KEYS);
+        });
+    },
+
+    async addApiKey(keyData: ApiKey): Promise<void> {
+        return fetchWithFallback('/keys', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(keyData)
+        }, () => {
+            const keys = localDB.get(STORAGE_KEYS.API_KEYS) as ApiKey[];
+            if (keyData.isActive) {
+                keys.forEach(k => k.isActive = false);
+            }
+            keys.push(keyData);
+            localDB.set(STORAGE_KEYS.API_KEYS, keys);
+        });
+    },
+
+    async updateApiKeyStatus(id: string, isActive: boolean): Promise<void> {
+        return fetchWithFallback(`/keys/${id}`, { 
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ isActive })
+        }, () => {
+            const keys = localDB.get(STORAGE_KEYS.API_KEYS) as ApiKey[];
+            if (isActive) {
+                keys.forEach(k => k.isActive = false);
+            }
+            const target = keys.find(k => k.id === id);
+            if (target) target.isActive = isActive;
+            localDB.set(STORAGE_KEYS.API_KEYS, keys);
+        });
+    },
+
+    async deleteApiKey(id: string): Promise<void> {
+        return fetchWithFallback(`/keys/${id}`, { method: 'DELETE' }, () => {
+             const keys = localDB.get(STORAGE_KEYS.API_KEYS) as ApiKey[];
+             localDB.set(STORAGE_KEYS.API_KEYS, keys.filter(k => k.id !== id));
+        });
+    },
+
+    async getActiveApiKey(): Promise<string | null> {
+        return fetchWithFallback('/keys/active', undefined, () => {
+             const keys = localDB.get(STORAGE_KEYS.API_KEYS) as ApiKey[];
+             return keys.find(k => k.isActive)?.key || null;
+        }).then((data: any) => data.key || data).catch(() => null);
     }
 };
